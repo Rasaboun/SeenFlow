@@ -1,0 +1,11 @@
+{
+  "name": "@maestro-vision/compiler",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "yaml": "^2.8.0"
+  }
+}
