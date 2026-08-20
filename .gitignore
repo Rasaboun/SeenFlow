@@ -1,0 +1,21 @@
+# Generated Maestro Vision files
+.maestro-vision/
+.superpowers/
+docs/
+
+# Node.js
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
