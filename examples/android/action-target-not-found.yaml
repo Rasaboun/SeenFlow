@@ -1,0 +1,9 @@
+appId: com.example.maestrovisionfixture
+---
+
+- launchApp
+
+- visionTap:
+    text: "Missing target"
+    expect:
+      visibleText: "Welcome"

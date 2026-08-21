@@ -1,0 +1,10 @@
+appId: com.example.maestrovisionfixture
+---
+
+- launchApp
+
+- visionTap:
+    text: "Continue"
+    timeout: 1000
+    expect:
+      visibleText: "Never appears"
