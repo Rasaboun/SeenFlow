@@ -1,15 +1,22 @@
 import os
 import secrets
+from collections.abc import Callable
 from typing import Annotated
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
 
+from maestro_vision.ocr.paddle import PaddleOCRProvider
+from maestro_vision.ocr.provider import OCRProvider
+
 
 HOST = "127.0.0.1"
 
 
-def create_app(session_token: str) -> FastAPI:
+def create_app(
+    session_token: str,
+    provider_factory: Callable[[], OCRProvider] = PaddleOCRProvider,
+) -> FastAPI:
     if not session_token:
         raise ValueError("session token must not be empty")
 
@@ -30,6 +37,7 @@ def create_app(session_token: str) -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+    app.state.ocr_provider = provider_factory()
 
     @app.get("/v1/health")
     async def health() -> dict[str, str]:
