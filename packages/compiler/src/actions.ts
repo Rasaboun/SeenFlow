@@ -19,15 +19,28 @@ export interface VisionTapAction {
   expect: ExpectedVisualEffect;
 }
 
+export interface TapOnAction {
+  kind: "tapOn";
+  location: SourceLocation;
+  tapOn: Record<string, unknown>;
+  expect: ExpectedVisualEffect;
+}
+
 export interface MaestroAction {
   kind: "maestro";
   location: SourceLocation;
   value: unknown;
 }
 
-export type FlowAction = MaestroAction | VisionTapAction;
+export type FlowAction = MaestroAction | TapOnAction | VisionTapAction;
+
+export interface CompilerWarning {
+  location: SourceLocation;
+  message: string;
+}
 
 export interface FlowAst {
   config: unknown;
   actions: FlowAction[];
+  warnings: CompilerWarning[];
 }

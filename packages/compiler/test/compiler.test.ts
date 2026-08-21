@@ -6,6 +6,10 @@ function flow(lines: string[]) {
   return parseFlow(["appId: com.example.app", "---", ...lines, ""].join("\n"), "flows/checkout.yaml");
 }
 
+function flowWithConfig(config: string[], lines: string[]) {
+  return parseFlow([...config, "---", ...lines, ""].join("\n"), "flows/checkout.yaml");
+}
+
 describe("buildFlowAst", () => {
   test("keeps non-visionTap commands as opaque Maestro actions", () => {
     const ast = buildFlowAst(flow(["- launchApp", "- futureCommand:", "    enabled: true"]));
@@ -94,5 +98,89 @@ describe("buildFlowAst", () => {
 
   test.each(invalidVisionTaps)("rejects invalid visionTap %s with the command source location", (_field, lines) => {
     expect(() => buildFlowAst(flow(lines))).toThrow(/flows\/checkout\.yaml:3/);
+  });
+
+  test("extracts tapOn expect while preserving every native property", () => {
+    const ast = buildFlowAst(
+      flow([
+        "- tapOn:",
+        "    id: save-button",
+        "    retryTapIfNoChange: true",
+        "    expect:",
+        "      visibleText: Saved",
+      ]),
+    );
+
+    expect(ast.actions[0]).toEqual({
+      kind: "tapOn",
+      tapOn: { id: "save-button", retryTapIfNoChange: true },
+      expect: { kind: "visibleText", text: "Saved", requireTransition: true },
+      location: { file: "flows/checkout.yaml", line: 3, column: 1 },
+    });
+  });
+
+  test("supports tapOn notVisibleText without transition enforcement", () => {
+    const ast = buildFlowAst(
+      flow([
+        "- tapOn:",
+        "    text: Close",
+        "    expect:",
+        "      notVisibleText: Loading...",
+        "      requireTransition: false",
+      ]),
+    );
+
+    expect(ast.actions[0]).toMatchObject({
+      kind: "tapOn",
+      tapOn: { text: "Close" },
+      expect: { kind: "notVisibleText", text: "Loading...", requireTransition: false },
+    });
+  });
+
+  test("rejects expanded tapOn without expect in strict mode", () => {
+    expect(() => buildFlowAst(flow(["- tapOn:", "    text: Save"]))).toThrow(
+      /flows\/checkout\.yaml:3: tapOn requires an expected effect/,
+    );
+  });
+
+  test("passes expanded tapOn without expect through when effects are optional", () => {
+    const parsed = flowWithConfig(
+      ["appId: com.example.app", "maestroVision:", "  requireEffects: false"],
+      ["- tapOn:", "    text: Save"],
+    );
+
+    const ast = buildFlowAst(parsed);
+    expect(ast.actions[0]).toMatchObject({
+      kind: "maestro",
+      value: { tapOn: { text: "Save" } },
+    });
+    expect(ast.warnings).toEqual([]);
+  });
+
+  test("keeps shorthand tapOn compatible and emits its transition warning", () => {
+    const ast = buildFlowAst(flow(['- tapOn: "Save"']));
+
+    expect(ast.actions[0]).toMatchObject({ kind: "maestro", value: { tapOn: "Save" } });
+    expect(ast.warnings).toEqual([
+      {
+        location: { file: "flows/checkout.yaml", line: 3, column: 1 },
+        message:
+          "tapOn action has no expected effect. Use expanded tapOn syntax to make this action transition-safe.",
+      },
+    ]);
+  });
+
+  test("rejects invalid tapOn effects with the command source location", () => {
+    expect(() =>
+      buildFlowAst(
+        flow([
+          "- tapOn:",
+          "    text: Save",
+          "    expect:",
+          "      visibleText: Saved",
+          "      requireTransition: null",
+        ]),
+      ),
+    ).toThrow(/flows\/checkout\.yaml:3: tapOn\.expect\.requireTransition must be a boolean/);
   });
 });

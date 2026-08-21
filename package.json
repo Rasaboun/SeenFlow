@@ -1,8 +1,13 @@
 {
   "name": "maestro-vision",
   "private": true,
+  "packageManager": "bun@1.4.0",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "test": "pnpm --recursive test"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p packages/compiler/tsconfig.json"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

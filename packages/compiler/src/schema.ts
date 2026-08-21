@@ -1,9 +1,17 @@
-import type { ExpectedVisualEffect, MatchMode, VisionTapAction } from "./actions.js";
+import type { ExpectedVisualEffect, MatchMode, TapOnAction, VisionTapAction } from "./actions.js";
 import { failAt } from "./errors.js";
 import type { ParsedCommand, SourceLocation } from "./parser.js";
 
 const matchModes = new Set<MatchMode>(["exact", "contains", "fuzzy"]);
 const effectKeys = ["visibleText", "notVisibleText"] as const;
+
+export function effectsRequired(config: unknown): boolean {
+  return !(
+    isRecord(config) &&
+    isRecord(config.maestroVision) &&
+    config.maestroVision.requireEffects === false
+  );
+}
 
 export function isVisionTap(command: ParsedCommand): boolean {
   return isRecord(command.value) && Object.hasOwn(command.value, "visionTap");
@@ -23,8 +31,34 @@ export function parseVisionTap(command: ParsedCommand): VisionTapAction {
     threshold: threshold(input.threshold, command.location),
     occurrence: occurrence(input.occurrence, command.location),
     timeout: timeout(input.timeout, command.location),
-    expect: effect(input.expect, command.location),
+    expect: effect(input.expect, command.location, "visionTap"),
   };
+}
+
+export function isExpandedTapOn(command: ParsedCommand): boolean {
+  return isRecord(command.value) && isRecord(command.value.tapOn);
+}
+
+export function isShorthandTapOn(command: ParsedCommand): boolean {
+  return isRecord(command.value) && typeof command.value.tapOn === "string";
+}
+
+export function parseTapOn(command: ParsedCommand): TapOnAction {
+  if (!isRecord(command.value) || !isRecord(command.value.tapOn)) {
+    failAt(command.location, "tapOn must be an object.");
+  }
+
+  const { expect, ...tapOn } = command.value.tapOn;
+  return {
+    kind: "tapOn",
+    location: command.location,
+    tapOn,
+    expect: effect(expect, command.location, "tapOn"),
+  };
+}
+
+export function hasExpectedEffect(command: ParsedCommand): boolean {
+  return isRecord(command.value) && isRecord(command.value.tapOn) && Object.hasOwn(command.value.tapOn, "expect");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -70,22 +104,22 @@ function timeout(value: unknown, location: SourceLocation): number {
   return value;
 }
 
-function effect(value: unknown, location: SourceLocation): ExpectedVisualEffect {
-  if (!isRecord(value)) failAt(location, "visionTap.expect must be an object.");
+function effect(value: unknown, location: SourceLocation, action: "tapOn" | "visionTap"): ExpectedVisualEffect {
+  if (!isRecord(value)) failAt(location, `${action}.expect must be an object.`);
 
   const selected = effectKeys.filter((key) => value[key] !== undefined);
   if (selected.length !== 1 || Object.keys(value).some((key) => !effectKeys.includes(key as (typeof effectKeys)[number]) && key !== "requireTransition")) {
-    failAt(location, "visionTap.expect must contain exactly one supported effect.");
+    failAt(location, `${action}.expect must contain exactly one supported effect.`);
   }
 
   const kind = selected[0];
   const requireTransition = value.requireTransition === undefined ? true : value.requireTransition;
   if (typeof requireTransition !== "boolean") {
-    failAt(location, "visionTap.expect.requireTransition must be a boolean.");
+    failAt(location, `${action}.expect.requireTransition must be a boolean.`);
   }
   return {
     kind,
-    text: requiredText(value[kind], location, `visionTap.expect.${kind}`),
+    text: requiredText(value[kind], location, `${action}.expect.${kind}`),
     requireTransition,
   };
 }
