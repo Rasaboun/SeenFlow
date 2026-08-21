@@ -44,9 +44,24 @@ def test_paddle_provider_initializes_once_and_converts_results() -> None:
     assert provider.detect(image) == expected
     assert initializations == [
         {
+            "text_detection_model_name": "PP-OCRv6_tiny_det",
+            "text_recognition_model_name": "PP-OCRv6_tiny_rec",
             "use_doc_orientation_classify": False,
             "use_doc_unwarping": False,
             "use_textline_orientation": False,
         }
     ]
     assert len(engine.inputs) == 2
+
+
+def test_paddle_provider_downscales_large_screens_and_restores_original_boxes() -> None:
+    engine = FakeEngine()
+    provider = PaddleOCRProvider(lambda **_options: engine)
+
+    items = provider.detect(Image.new("RGB", (1200, 2400)))
+
+    assert engine.inputs[0].shape[:2] == (1200, 600)
+    assert items == [
+        OCRItem("Save", 0.97, BoundingBox(20, 40, 80, 80)),
+        OCRItem("Loading...", 0.91, BoundingBox(140, 160, 200, 40)),
+    ]

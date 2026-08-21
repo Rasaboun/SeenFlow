@@ -25,6 +25,8 @@ export async function startSidecar(options: SidecarOptions = {}): Promise<Sideca
       MAESTRO_VISION_PORT: String(port),
       MAESTRO_VISION_SESSION_TOKEN: token,
       MAESTRO_VISION_DEBUG: String(options.debug ?? false),
+      PADDLE_PDX_MODEL_SOURCE: "huggingface",
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True",
       ...(options.artifactsDir ? { MAESTRO_VISION_ARTIFACTS_DIR: options.artifactsDir } : {}),
     },
     stdio: options.debug ? "inherit" : "ignore",

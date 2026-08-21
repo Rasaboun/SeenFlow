@@ -26,6 +26,7 @@ def test_real_ocr_fixture_preserves_boxes_and_visual_order() -> None:
     assert abs(items[0].box.y - 78) <= 10
     assert abs(items[0].box.width - 164) <= 15
     assert abs(items[0].box.height - 73) <= 15
+    assert items[5].confidence < 0.98
 
     duplicates = find_matches(items, "add", "exact")
     assert [(match.item.text, match.item.box.x) for match in duplicates] == [
