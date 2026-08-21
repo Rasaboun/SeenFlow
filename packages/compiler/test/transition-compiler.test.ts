@@ -68,7 +68,7 @@ describe("compileFlow", () => {
           env: { TEXT: "Save", MATCH: "exact", THRESHOLD: "0.85", OCCURRENCE: "0" },
         },
       },
-      { tapOn: { point: "${output.maestroVision.x}%,${output.maestroVision.y}%" } },
+      { tapOn: { point: "${output.maestroVision.tapX}%,${output.maestroVision.tapY}%" } },
       {
         runScript: {
           file: ".maestro-vision/runtime/wait-visual.js",
@@ -98,7 +98,7 @@ describe("compileFlow", () => {
           env: { TEXT: "Home", MATCH: "fuzzy", THRESHOLD: "0.9", OCCURRENCE: "2" },
         },
       },
-      { tapOn: { point: "${output.maestroVision.x}%,${output.maestroVision.y}%" } },
+      { tapOn: { point: "${output.maestroVision.tapX}%,${output.maestroVision.tapY}%" } },
       {
         runScript: {
           file: ".maestro-vision/runtime/wait-visual.js",

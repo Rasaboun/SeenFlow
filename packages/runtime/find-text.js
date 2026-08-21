@@ -52,6 +52,8 @@ if (
 output.maestroVision = {
   x: result.match.normalized.x,
   y: result.match.normalized.y,
+  tapX: Math.round(result.match.normalized.x),
+  tapY: Math.round(result.match.normalized.y),
   text: result.match.text,
   confidence: result.match.confidence,
 };

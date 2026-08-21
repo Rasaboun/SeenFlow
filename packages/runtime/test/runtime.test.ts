@@ -62,7 +62,14 @@ describe("Maestro runtime bridge", () => {
       }),
     });
     expect(globals.output).toEqual({
-      maestroVision: { x: 51.33, y: 78.21, text: "Save", confidence: 0.97 },
+      maestroVision: {
+        x: 51.33,
+        y: 78.21,
+        tapX: 51,
+        tapY: 78,
+        text: "Save",
+        confidence: 0.97,
+      },
     });
   });
 

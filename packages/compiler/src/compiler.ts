@@ -77,7 +77,7 @@ function visionTap(action: VisionTapAction, runtimePath: string): unknown[] {
       THRESHOLD: String(action.threshold),
       OCCURRENCE: String(action.occurrence),
     }),
-    { tapOn: { point: "${output.maestroVision.x}%,${output.maestroVision.y}%" } },
+    { tapOn: { point: "${output.maestroVision.tapX}%,${output.maestroVision.tapY}%" } },
   ];
 }
 
