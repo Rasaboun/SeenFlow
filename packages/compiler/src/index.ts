@@ -1,5 +1,5 @@
 export { parseFlow, type ParsedCommand, type ParsedFlow, type SourceLocation } from "./parser.js";
-export { buildFlowAst } from "./compiler.js";
+export { buildFlowAst, compileFlow, type CompileResult } from "./compiler.js";
 export type {
   CompilerWarning,
   ExpectedVisualEffect,
