@@ -15,7 +15,11 @@ import {
 
 const shorthandWarning =
   "tapOn action has no expected effect. Use expanded tapOn syntax to make this action transition-safe.";
-const runtime = ".maestro-vision/runtime";
+const defaultRuntimePath = ".maestro-vision/runtime";
+
+export interface CompileOptions {
+  runtimePath?: string;
+}
 
 export interface CompileResult {
   yaml: string;
@@ -46,27 +50,28 @@ export function buildFlowAst(parsed: ParsedFlow): FlowAst {
   };
 }
 
-export function compileFlow(source: string, file: string): CompileResult {
+export function compileFlow(source: string, file: string, options: CompileOptions = {}): CompileResult {
   const ast = buildFlowAst(parseFlow(source, file));
   const config = nativeConfig(ast.config);
-  const commands = ast.actions.flatMap(compileAction);
+  const runtimePath = options.runtimePath ?? defaultRuntimePath;
+  const commands = ast.actions.flatMap((action) => compileAction(action, runtimePath));
   return {
     yaml: `${stringify(config).trimEnd()}\n---\n${stringify(commands)}`,
     warnings: ast.warnings,
   };
 }
 
-function compileAction(action: FlowAction): unknown[] {
+function compileAction(action: FlowAction, runtimePath: string): unknown[] {
   if (action.kind === "maestro") return [action.value];
   if (action.kind === "tapOn") {
-    return transition(action.expect, [{ tapOn: action.tapOn }], 7000);
+    return transition(action.expect, [{ tapOn: action.tapOn }], 7000, runtimePath);
   }
-  return transition(action.expect, visionTap(action), action.timeout);
+  return transition(action.expect, visionTap(action, runtimePath), action.timeout, runtimePath);
 }
 
-function visionTap(action: VisionTapAction): unknown[] {
+function visionTap(action: VisionTapAction, runtimePath: string): unknown[] {
   return [
-    runScript("find-text.js", {
+    runScript(runtimePath, "find-text.js", {
       TEXT: action.text,
       MATCH: action.match,
       THRESHOLD: String(action.threshold),
@@ -76,14 +81,23 @@ function visionTap(action: VisionTapAction): unknown[] {
   ];
 }
 
-function transition(effect: ExpectedVisualEffect, action: unknown[], timeout: number): unknown[] {
+function transition(
+  effect: ExpectedVisualEffect,
+  action: unknown[],
+  timeout: number,
+  runtimePath: string,
+): unknown[] {
   const state = effect.kind === "visibleText" ? "visible" : "not-visible";
   return [
     ...(effect.requireTransition
-      ? [runScript("assert-visual.js", { TEXT: effect.text, STATE: inverse(state) })]
+      ? [runScript(runtimePath, "assert-visual.js", { TEXT: effect.text, STATE: inverse(state) })]
       : []),
     ...action,
-    runScript("wait-visual.js", { TEXT: effect.text, STATE: state, TIMEOUT: String(timeout) }),
+    runScript(runtimePath, "wait-visual.js", {
+      TEXT: effect.text,
+      STATE: state,
+      TIMEOUT: String(timeout),
+    }),
   ];
 }
 
@@ -91,8 +105,8 @@ function inverse(state: "not-visible" | "visible") {
   return state === "visible" ? "not-visible" : "visible";
 }
 
-function runScript(file: string, env: Record<string, string>) {
-  return { runScript: { file: `${runtime}/${file}`, env } };
+function runScript(runtimePath: string, file: string, env: Record<string, string>) {
+  return { runScript: { file: `${runtimePath}/${file}`, env } };
 }
 
 function nativeConfig(config: unknown): unknown {

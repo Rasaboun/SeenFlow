@@ -1,0 +1,8 @@
+{
+  "name": "@maestro-vision/cli",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "maestro-vision": "src/index.ts"
+  }
+}

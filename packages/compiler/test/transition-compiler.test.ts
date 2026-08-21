@@ -122,4 +122,25 @@ describe("compileFlow", () => {
       },
     ]);
   });
+
+  test("allows the generated workspace to choose a valid relative runtime path", () => {
+    const source = [
+      "appId: com.example.app",
+      "---",
+      "- visionTap:",
+      "    text: Save",
+      "    expect:",
+      "      visibleText: Saved",
+      "",
+    ].join("\n");
+
+    const result = compileFlow(source, "flow.yaml", { runtimePath: "../runtime" });
+
+    expect(documents(result.yaml)[1]).toMatchObject([
+      { runScript: { file: "../runtime/assert-visual.js" } },
+      { runScript: { file: "../runtime/find-text.js" } },
+      { tapOn: expect.anything() },
+      { runScript: { file: "../runtime/wait-visual.js" } },
+    ]);
+  });
 });
