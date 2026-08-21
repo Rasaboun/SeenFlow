@@ -14,3 +14,9 @@ class OCRItem:
     text: str
     confidence: float
     box: BoundingBox
+
+
+@dataclass(frozen=True)
+class OCRMatch:
+    item: OCRItem
+    score: float
