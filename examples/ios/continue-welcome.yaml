@@ -1,0 +1,10 @@
+appId: com.example.maestrovisionfixture
+---
+
+- launchApp
+
+- visionTap:
+    text: "Continue"
+    expect:
+      visibleText: "Welcome"
+
