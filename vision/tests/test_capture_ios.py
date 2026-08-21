@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from maestro_vision.capture.ios import IOSSimulatorCapture
@@ -9,7 +11,8 @@ class RecordingRunner:
 
     def run(self, args: list[str]) -> bytes:
         self.commands.append(args)
-        return b"png"
+        Path(args[-1]).write_bytes(b"png")
+        return b""
 
 
 def test_ios_capture_targets_the_exact_simulator_udid() -> None:
@@ -18,7 +21,10 @@ def test_ios_capture_targets_the_exact_simulator_udid() -> None:
     screenshot = IOSSimulatorCapture(runner).capture("ABC-123")
 
     assert screenshot == b"png"
-    assert runner.commands == [["xcrun", "simctl", "io", "ABC-123", "screenshot", "-"]]
+    command = runner.commands[0]
+    assert command[:6] == ["xcrun", "simctl", "io", "ABC-123", "screenshot", "--type=png"]
+    assert command[6].endswith(".png")
+    assert not Path(command[6]).exists()
 
 
 def test_ios_capture_rejects_invalid_udids_before_execution() -> None:

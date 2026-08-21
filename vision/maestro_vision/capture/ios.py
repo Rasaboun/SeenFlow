@@ -1,3 +1,6 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 from .base import ProcessRunner, validate_device_id
 
 
@@ -7,4 +10,9 @@ class IOSSimulatorCapture:
 
     def capture(self, device_id: str) -> bytes:
         udid = validate_device_id(device_id)
-        return self._runner.run(["xcrun", "simctl", "io", udid, "screenshot", "-"])
+        with TemporaryDirectory(prefix="maestro-vision-") as directory:
+            output = Path(directory) / "screenshot.png"
+            self._runner.run(
+                ["xcrun", "simctl", "io", udid, "screenshot", "--type=png", str(output)]
+            )
+            return output.read_bytes()
