@@ -1,0 +1,68 @@
+package com.example.maestrovisionfixture;
+
+import android.app.Activity;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RectF;
+import android.os.Bundle;
+import android.view.MotionEvent;
+import android.view.View;
+
+public final class MainActivity extends Activity {
+    @Override
+    public void onCreate(Bundle state) {
+        super.onCreate(state);
+        boolean welcomeInitiallyVisible = getIntent().getBooleanExtra("welcomeInitiallyVisible", false);
+        setContentView(new FixtureView(welcomeInitiallyVisible));
+    }
+
+    private final class FixtureView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final boolean welcomeInitiallyVisible;
+        private boolean tapped;
+
+        FixtureView(boolean welcomeInitiallyVisible) {
+            super(MainActivity.this);
+            this.welcomeInitiallyVisible = welcomeInitiallyVisible;
+            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            setBackgroundColor(Color.WHITE);
+        }
+
+        private RectF button() {
+            float centerX = getWidth() / 2f;
+            float centerY = getHeight() / 2f;
+            return new RectF(centerX - 300, centerY - 90, centerX + 300, centerY + 90);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            if (welcomeInitiallyVisible || tapped) drawText(canvas, "Welcome", getHeight() / 2f - 340, Color.BLACK, 104);
+            if (tapped) {
+                drawText(canvas, "Tapped", getHeight() / 2f, Color.BLACK, 88);
+                return;
+            }
+            paint.setColor(Color.rgb(10, 132, 255));
+            canvas.drawRoundRect(button(), 44, 44, paint);
+            drawText(canvas, "Continue", getHeight() / 2f, Color.WHITE, 88);
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            if (event.getAction() != MotionEvent.ACTION_UP || !button().contains(event.getX(), event.getY())) return true;
+            tapped = true;
+            invalidate();
+            return true;
+        }
+
+        private void drawText(Canvas canvas, String text, float centerY, int color, float size) {
+            paint.setColor(color);
+            paint.setTextSize(size);
+            paint.setFakeBoldText(true);
+            paint.setTextAlign(Paint.Align.CENTER);
+            Paint.FontMetrics metrics = paint.getFontMetrics();
+            canvas.drawText(text, getWidth() / 2f, centerY - (metrics.ascent + metrics.descent) / 2, paint);
+        }
+    }
+}
