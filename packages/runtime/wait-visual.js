@@ -20,7 +20,7 @@ function findVisualText() {
   if (typeof body.found !== "boolean") {
     throw new Error("OCR_RUNTIME_FAILED\nSidecar returned an invalid visual assertion response.");
   }
-  return body.found;
+  return body;
 }
 
 function pause(milliseconds) {
@@ -31,11 +31,22 @@ function pause(milliseconds) {
 var timeout = Number(TIMEOUT);
 var deadline = Date.now() + timeout;
 var attempts = 0;
+var lastResult;
 while (true) {
   attempts += 1;
-  var found = findVisualText();
-  if (STATE === "visible" ? found : !found) break;
+  lastResult = findVisualText();
+  if (STATE === "visible" ? lastResult.found : !lastResult.found) break;
   if (Date.now() >= deadline) {
+    var detected = (lastResult.detections || [])
+      .map(function (item) {
+        return '  "' + item.text + '" confidence=' + item.confidence;
+      })
+      .join("\n");
+    var artifacts = lastResult.artifacts
+      ? "\nArtifacts:\n  " + Object.keys(lastResult.artifacts).map(function (key) {
+          return lastResult.artifacts[key];
+        }).join("\n  ")
+      : "";
     throw new Error(
       'POSTCONDITION_TIMEOUT\nExpected "' +
         TEXT +
@@ -43,7 +54,9 @@ while (true) {
         STATE +
         ".\nTimeout: " +
         timeout +
-        "ms",
+        "ms\nLast OCR detections:\n" +
+        (detected || "  nothing") +
+        artifacts,
     );
   }
   pause(250);

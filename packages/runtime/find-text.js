@@ -22,7 +22,23 @@ var result = requestFind({
 });
 
 if (!result.found) {
-  throw new Error('ACTION_TARGET_NOT_FOUND\nVisual text "' + TEXT + '" was not found.');
+  var detected = (result.detections || [])
+    .map(function (item) {
+      return '  "' + item.text + '" confidence=' + item.confidence;
+    })
+    .join("\n");
+  var artifacts = result.artifacts
+    ? "\nArtifacts:\n  " + Object.keys(result.artifacts).map(function (key) {
+        return result.artifacts[key];
+      }).join("\n  ")
+    : "";
+  throw new Error(
+    'ACTION_TARGET_NOT_FOUND\nVisual text "' +
+      TEXT +
+      '" was not found.\nOCR detected:\n' +
+      (detected || "  nothing") +
+      artifacts,
+  );
 }
 if (
   !result.match ||
@@ -39,4 +55,3 @@ output.maestroVision = {
   text: result.match.text,
   confidence: result.match.confidence,
 };
-

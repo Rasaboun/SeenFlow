@@ -3,7 +3,11 @@ import { basename, join, resolve } from "node:path";
 
 import { compileFlow } from "../../../compiler/src/index.js";
 import { runMaestro as defaultRunMaestro, type MaestroOptions } from "../maestro.js";
-import { startSidecar as defaultStartSidecar, type SidecarHandle } from "../sidecar.js";
+import {
+  startSidecar as defaultStartSidecar,
+  type SidecarHandle,
+  type SidecarOptions,
+} from "../sidecar.js";
 import { compileFile } from "./compile.js";
 
 export interface TestFileOptions {
@@ -13,7 +17,7 @@ export interface TestFileOptions {
 }
 
 interface Dependencies {
-  startSidecar(options: { debug?: boolean }): Promise<SidecarHandle>;
+  startSidecar(options: SidecarOptions): Promise<SidecarHandle>;
   runMaestro(options: MaestroOptions): Promise<number>;
 }
 
@@ -35,7 +39,10 @@ export async function testFile(
   const output = join(cwd, ".maestro-vision", "generated", basename(flow));
 
   compileFlow(await readFile(source, "utf8"), source);
-  const sidecar = await dependencies.startSidecar({ debug: options.debug });
+  const sidecar = await dependencies.startSidecar({
+    debug: options.debug,
+    artifactsDir: join(cwd, ".maestro-vision", "artifacts"),
+  });
   const removeSignalCleanup = installSignalCleanup(sidecar.stop);
   try {
     await compileFile(source, { cwd });

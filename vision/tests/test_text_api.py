@@ -1,4 +1,6 @@
 from io import BytesIO
+import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -39,9 +41,20 @@ class FakeProvider:
         return self.items
 
 
-def client(provider: FakeProvider, capture: FakeCapture | None = None) -> tuple[TestClient, FakeCapture]:
+def client(
+    provider: FakeProvider,
+    capture: FakeCapture | None = None,
+    artifacts_dir: Path | None = None,
+    debug: bool = False,
+) -> tuple[TestClient, FakeCapture]:
     capture = capture or FakeCapture()
-    app = create_app(TOKEN, lambda: provider, {"ios": capture, "android": capture})
+    app = create_app(
+        TOKEN,
+        lambda: provider,
+        {"ios": capture, "android": capture},
+        artifacts_dir=artifacts_dir,
+        debug=debug,
+    )
     return TestClient(app, headers={"Authorization": f"Bearer {TOKEN}"}), capture
 
 
@@ -110,7 +123,9 @@ def test_find_returns_absent_and_captures_fresh_screens() -> None:
     first = api.post("/v1/text/find", json=request)
     second = api.post("/v1/text/find", json=request)
 
-    assert first.json() == {"found": False, "query": "Missing", "matches": []}
+    assert first.json()["found"] is False
+    assert first.json()["query"] == "Missing"
+    assert first.json()["matches"] == []
     assert second.status_code == 200
     assert capture.devices == ["ABC-123", "ABC-123"]
     assert provider.calls == 2
@@ -137,3 +152,63 @@ def test_capture_and_ocr_failures_have_distinct_codes() -> None:
 
     assert capture_api.post("/v1/text/detect", json=body).json()["detail"]["code"] == "OCR_CAPTURE_FAILED"
     assert ocr_api.post("/v1/text/detect", json=body).json()["detail"]["code"] == "OCR_RUNTIME_FAILED"
+
+
+def test_missing_text_saves_actionable_visual_artifacts(tmp_path: Path) -> None:
+    provider = FakeProvider(
+        [
+            OCRItem("Chicken Katsu", 0.99, BoundingBox(10, 10, 80, 15)),
+            OCRItem("START COOKlNG", 0.91, BoundingBox(20, 50, 100, 20)),
+        ]
+    )
+    api, _capture = client(provider, artifacts_dir=tmp_path)
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Start cooking",
+            "match": "exact",
+            "threshold": 0.85,
+            "occurrence": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    artifacts = response.json()["artifacts"]
+    assert Path(artifacts["screenshot"]).is_file()
+    assert Path(artifacts["annotated"]).is_file()
+    diagnostic = json.loads(Path(artifacts["ocr"]).read_text())
+    assert diagnostic["selector"] == {
+        "text": "Start cooking",
+        "match": "exact",
+        "threshold": 0.85,
+        "occurrence": 0,
+    }
+    assert [item["text"] for item in diagnostic["detections"]] == [
+        "Chicken Katsu",
+        "START COOKlNG",
+    ]
+
+
+def test_request_body_size_is_limited() -> None:
+    api, _capture = client(FakeProvider([]))
+
+    response = api.post(
+        "/v1/text/find",
+        content=b"{" + b'"padding":"' + b"x" * 20_000 + b'"}',
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 413
+
+
+def test_debug_mode_logs_capture_and_ocr_timings(capsys: pytest.CaptureFixture[str]) -> None:
+    api, _capture = client(FakeProvider([]), debug=True)
+
+    api.post("/v1/text/detect", json={"platform": "ios", "deviceId": "ABC-123"})
+
+    output = capsys.readouterr().out
+    assert "capture duration=" in output
+    assert "OCR duration=" in output

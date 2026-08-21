@@ -119,6 +119,10 @@ describe("CLI", () => {
 
     expect(exitCode).toBe(17);
     expect(events).toEqual(["sidecar", "maestro", "stop"]);
+    expect(startSidecar).toHaveBeenCalledWith({
+      debug: true,
+      artifactsDir: join(directory, ".maestro-vision", "artifacts"),
+    });
     expect(runMaestro).toHaveBeenCalledWith(
       expect.objectContaining({
         flow: join(directory, ".maestro-vision", "generated", "flow.yaml"),

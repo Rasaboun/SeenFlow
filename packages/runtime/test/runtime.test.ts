@@ -67,7 +67,13 @@ describe("Maestro runtime bridge", () => {
   });
 
   test("find-text exposes an actionable target failure", () => {
-    const { globals } = baseGlobals({ found: false, query: "Save", matches: [] });
+    const { globals } = baseGlobals({
+      found: false,
+      query: "Save",
+      matches: [],
+      detections: [{ text: "START COOKlNG", confidence: 0.91 }],
+      artifacts: { annotated: ".maestro-vision/artifacts/run/annotated.png" },
+    });
 
     expect(() =>
       execute("find-text.js", {
@@ -77,7 +83,9 @@ describe("Maestro runtime bridge", () => {
         THRESHOLD: "0.85",
         OCCURRENCE: "0",
       }),
-    ).toThrowError(/ACTION_TARGET_NOT_FOUND[\s\S]*Save/);
+    ).toThrowError(
+      /ACTION_TARGET_NOT_FOUND[\s\S]*Save[\s\S]*START COOKlNG[\s\S]*annotated\.png/,
+    );
   });
 
   test.each([
@@ -121,7 +129,13 @@ describe("Maestro runtime bridge", () => {
         return now;
       }
     }
-    const { globals } = baseGlobals({ found: false, query: "Saved", matches: [] });
+    const { globals } = baseGlobals({
+      found: false,
+      query: "Saved",
+      matches: [],
+      detections: [{ text: "Saving...", confidence: 0.93 }],
+      artifacts: { screenshot: ".maestro-vision/artifacts/run/screenshot.png" },
+    });
 
     expect(() =>
       execute("wait-visual.js", {
@@ -131,7 +145,7 @@ describe("Maestro runtime bridge", () => {
         STATE: "visible",
         TIMEOUT: "500",
       }),
-    ).toThrowError(/POSTCONDITION_TIMEOUT[\s\S]*500ms/);
+    ).toThrowError(/POSTCONDITION_TIMEOUT[\s\S]*500ms[\s\S]*Saving\.\.\.[\s\S]*screenshot\.png/);
   });
 
   test("rejects sidecar HTTP failures instead of accepting malformed state", () => {

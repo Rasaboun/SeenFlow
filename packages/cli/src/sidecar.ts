@@ -9,7 +9,12 @@ export interface SidecarHandle {
   stop(): Promise<void>;
 }
 
-export async function startSidecar(options: { debug?: boolean } = {}): Promise<SidecarHandle> {
+export interface SidecarOptions {
+  debug?: boolean;
+  artifactsDir?: string;
+}
+
+export async function startSidecar(options: SidecarOptions = {}): Promise<SidecarHandle> {
   const port = await availablePort();
   const token = randomBytes(32).toString("hex");
   const url = `http://127.0.0.1:${port}`;
@@ -19,6 +24,8 @@ export async function startSidecar(options: { debug?: boolean } = {}): Promise<S
       ...process.env,
       MAESTRO_VISION_PORT: String(port),
       MAESTRO_VISION_SESSION_TOKEN: token,
+      MAESTRO_VISION_DEBUG: String(options.debug ?? false),
+      ...(options.artifactsDir ? { MAESTRO_VISION_ARTIFACTS_DIR: options.artifactsDir } : {}),
     },
     stdio: options.debug ? "inherit" : "ignore",
   });

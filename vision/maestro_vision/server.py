@@ -1,18 +1,22 @@
 import os
 import secrets
+import time
 from collections.abc import Callable
 from io import BytesIO
+from pathlib import Path
 from typing import Annotated
 from typing import Literal
 
 import uvicorn
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field
 
 from maestro_vision.capture.android import AndroidCapture
 from maestro_vision.capture.base import CaptureError, ScreenshotCapture
 from maestro_vision.capture.ios import IOSSimulatorCapture
+from maestro_vision.diagnostics import save_failure_artifacts
 from maestro_vision.matching import MatchSelectionError, find_matches, select_match
 from maestro_vision.models import BoundingBox, OCRItem
 from maestro_vision.ocr.paddle import PaddleOCRProvider
@@ -20,6 +24,7 @@ from maestro_vision.ocr.provider import OCRProvider
 
 
 HOST = "127.0.0.1"
+MAX_REQUEST_BYTES = 16_384
 
 
 class DetectRequest(BaseModel):
@@ -40,6 +45,8 @@ def create_app(
     session_token: str,
     provider_factory: Callable[[], OCRProvider] = PaddleOCRProvider,
     captures: dict[str, ScreenshotCapture] | None = None,
+    artifacts_dir: Path | None = None,
+    debug: bool = False,
 ) -> FastAPI:
     if not session_token:
         raise ValueError("session token must not be empty")
@@ -66,6 +73,16 @@ def create_app(
         "ios": IOSSimulatorCapture(),
         "android": AndroidCapture(),
     }
+    app.state.artifacts_dir = artifacts_dir or Path(".maestro-vision/artifacts")
+    app.state.debug = debug
+
+    @app.middleware("http")
+    async def limit_request_body(request: Request, call_next):
+        body = await request.body()
+        if len(body) > MAX_REQUEST_BYTES:
+            return JSONResponse(status_code=413, content={"detail": "Request body too large"})
+        request._body = body
+        return await call_next(request)
 
     @app.get("/v1/health")
     async def health() -> dict[str, str]:
@@ -84,17 +101,36 @@ def create_app(
     async def find(request: FindRequest) -> dict[str, object]:
         image, items = analyze(app, request.platform, request.device_id)
         matches = find_matches(items, request.text, request.match, request.threshold)
+        selector = {
+            "text": request.text,
+            "match": request.match,
+            "threshold": request.threshold,
+            "occurrence": request.occurrence,
+        }
         if not matches and request.occurrence == 0:
-            return {"found": False, "query": request.text, "matches": []}
+            artifacts = save_failure_artifacts(
+                app.state.artifacts_dir, image, items, selector, matches
+            )
+            return {
+                "found": False,
+                "query": request.text,
+                "matches": [],
+                "detections": [item_json(item) for item in items],
+                "artifacts": artifacts,
+            }
         try:
             match = select_match(matches, request.occurrence)
         except MatchSelectionError as error:
+            artifacts = save_failure_artifacts(
+                app.state.artifacts_dir, image, items, selector, error.matches
+            )
             raise HTTPException(
                 status_code=404,
                 detail={
                     "code": "ACTION_TARGET_NOT_FOUND",
                     "message": str(error),
                     "candidates": [item_json(candidate.item) for candidate in error.matches],
+                    "artifacts": artifacts,
                 },
             ) from error
 
@@ -119,6 +155,7 @@ def create_app(
 
 
 def analyze(app: FastAPI, platform: str, device_id: str) -> tuple[Image.Image, list[OCRItem]]:
+    capture_started = time.perf_counter()
     try:
         screenshot = app.state.captures[platform].capture(device_id)
         image = Image.open(BytesIO(screenshot))
@@ -128,13 +165,19 @@ def analyze(app: FastAPI, platform: str, device_id: str) -> tuple[Image.Image, l
             status_code=502,
             detail={"code": "OCR_CAPTURE_FAILED", "message": str(error)},
         ) from error
+    if app.state.debug:
+        print(f"maestro-vision: capture duration={(time.perf_counter() - capture_started) * 1000:.1f}ms")
+    ocr_started = time.perf_counter()
     try:
-        return image, app.state.ocr_provider.detect(image)
+        items = app.state.ocr_provider.detect(image)
     except Exception as error:
         raise HTTPException(
             status_code=500,
             detail={"code": "OCR_RUNTIME_FAILED", "message": str(error)},
         ) from error
+    if app.state.debug:
+        print(f"maestro-vision: OCR duration={(time.perf_counter() - ocr_started) * 1000:.1f}ms")
+    return image, items
 
 
 def item_json(item: OCRItem) -> dict[str, object]:
@@ -153,4 +196,16 @@ def main() -> None:
     port = int(os.environ["MAESTRO_VISION_PORT"])
     if not 0 < port < 65536:
         raise ValueError("MAESTRO_VISION_PORT must be between 1 and 65535")
-    uvicorn.run(create_app(os.environ["MAESTRO_VISION_SESSION_TOKEN"]), host=HOST, port=port)
+    artifacts_dir = Path(
+        os.environ.get("MAESTRO_VISION_ARTIFACTS_DIR", ".maestro-vision/artifacts")
+    )
+    debug = os.environ.get("MAESTRO_VISION_DEBUG") == "true"
+    uvicorn.run(
+        create_app(
+            os.environ["MAESTRO_VISION_SESSION_TOKEN"],
+            artifacts_dir=artifacts_dir,
+            debug=debug,
+        ),
+        host=HOST,
+        port=port,
+    )
