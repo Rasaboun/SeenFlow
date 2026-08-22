@@ -31,6 +31,7 @@ var result = requestFind({
   match: MATCH,
   threshold: Number(THRESHOLD),
   occurrence: Number(OCCURRENCE),
+  context: "target",
 });
 
 if (!result || typeof result.found !== "boolean") {

@@ -59,6 +59,7 @@ describe("Maestro runtime bridge", () => {
         match: "exact",
         threshold: 0.85,
         occurrence: 0,
+        context: "target",
       }),
     });
     expect(globals.output).toEqual({
@@ -134,7 +135,7 @@ describe("Maestro runtime bridge", () => {
   });
 
   test("debug mode logs the visual precondition result", () => {
-    const { globals } = baseGlobals({ found: false, query: "Saved", matches: [] });
+    const { globals, post } = baseGlobals({ found: false, query: "Saved", matches: [] });
 
     execute("assert-visual.js", {
       ...globals,
@@ -146,6 +147,10 @@ describe("Maestro runtime bridge", () => {
     expect((globals.console as { log: ReturnType<typeof vi.fn> }).log).toHaveBeenCalledWith(
       "seenflow: precondition text=Saved expected=not-visible found=false",
     );
+    expect(JSON.parse((post.mock.calls[0]?.[1] as { body: string }).body)).toMatchObject({
+      context: "precondition",
+      state: "not-visible",
+    });
   });
 
   test("wait-visual polls until the visual postcondition is satisfied", () => {
@@ -168,6 +173,11 @@ describe("Maestro runtime bridge", () => {
     });
 
     expect(post).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((post.mock.calls[1]?.[1] as { body: string }).body)).toMatchObject({
+      context: "postcondition",
+      state: "visible",
+      attempt: 2,
+    });
   });
 
   test("wait-visual distinguishes a postcondition timeout", () => {

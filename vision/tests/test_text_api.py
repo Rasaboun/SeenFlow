@@ -258,11 +258,18 @@ def test_debug_mode_logs_capture_and_ocr_timings(capsys: pytest.CaptureFixture[s
 
     api.post(
         "/v1/text/find",
-        json={"platform": "ios", "deviceId": "ABC-123", "text": "Save"},
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Save",
+            "context": "precondition",
+            "state": "visible",
+        },
     )
 
     output = capsys.readouterr().out
     assert "capture duration=" in output
     assert "OCR duration=" in output
+    assert "precondition text=Save expected=visible found=true satisfied=true" in output
     assert "matched text=Save score=1.000 confidence=0.970" in output
     assert "box=(80,40,40,20) normalized=(50.00,50.00)" in output

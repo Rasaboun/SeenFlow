@@ -40,6 +40,9 @@ class FindRequest(DetectRequest):
     threshold: float = Field(default=0.85, ge=0, le=1)
     occurrence: int = Field(default=0, ge=0)
     diagnostics: bool = False
+    context: Literal["target", "precondition", "postcondition"] | None = None
+    state: Literal["visible", "not-visible"] | None = None
+    attempt: int | None = Field(default=None, ge=1)
 
     @field_validator("text")
     @classmethod
@@ -109,6 +112,7 @@ def create_app(
     async def find(request: FindRequest) -> dict[str, object]:
         image, items = analyze(app, request.platform, request.device_id)
         matches = find_matches(items, request.text, request.match, request.threshold)
+        log_visual_result(app, request, bool(matches))
         selector = {
             "text": request.text,
             "match": request.match,
@@ -180,6 +184,19 @@ def create_app(
         return response
 
     return app
+
+
+def log_visual_result(app: FastAPI, request: FindRequest, found: bool) -> None:
+    if not app.state.debug or request.context not in ("precondition", "postcondition"):
+        return
+    if request.state is None:
+        return
+    satisfied = found if request.state == "visible" else not found
+    attempt = f" attempt={request.attempt}" if request.attempt is not None else ""
+    print(
+        f"seenflow: {request.context} text={request.text} expected={request.state} "
+        f"found={str(found).lower()} satisfied={str(satisfied).lower()}{attempt}"
+    )
 
 
 def analyze(app: FastAPI, platform: str, device_id: str) -> tuple[Image.Image, list[OCRItem]]:

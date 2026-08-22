@@ -22,6 +22,8 @@ function findVisualText() {
       match: "exact",
       threshold: 0.85,
       occurrence: 0,
+      context: "precondition",
+      state: STATE,
     }),
   });
   if (!response.ok) {

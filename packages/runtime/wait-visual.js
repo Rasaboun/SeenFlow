@@ -9,7 +9,7 @@ function throwSidecarError(response) {
   throw new Error(code + "\nSidecar returned HTTP " + response.status + ".\n" + message);
 }
 
-function findVisualText(diagnostics) {
+function findVisualText(diagnostics, attempt) {
   var payload = {
     platform: maestro.platform,
     deviceId: MAESTRO_DEVICE_UDID,
@@ -17,6 +17,9 @@ function findVisualText(diagnostics) {
     match: "exact",
     threshold: 0.85,
     occurrence: 0,
+    context: "postcondition",
+    state: STATE,
+    attempt: attempt,
   };
   if (diagnostics) payload.diagnostics = true;
   var response = http.post(SEENFLOW_URL + "/v1/text/find", {
@@ -48,10 +51,10 @@ var attempts = 0;
 var lastResult;
 while (true) {
   attempts += 1;
-  lastResult = findVisualText(false);
+  lastResult = findVisualText(false, attempts);
   if (STATE === "visible" ? lastResult.found : !lastResult.found) break;
   if (Date.now() >= deadline) {
-    if (!lastResult.artifacts) lastResult = findVisualText(true);
+    if (!lastResult.artifacts) lastResult = findVisualText(true, attempts);
     var detected = (lastResult.detections || [])
       .map(function (item) {
         return '  "' + item.text + '" confidence=' + item.confidence;
