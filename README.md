@@ -55,6 +55,14 @@ bun link
 
 `bun link` exposes the repository's `seenflow` executable for local development. PaddleOCR initializes the official `PP-OCRv6_tiny_det` and `PP-OCRv6_tiny_rec` models once when the sidecar starts; the first run downloads them from Hugging Face.
 
+Seenflow uses PaddleOCR's ONNX Runtime engine by default. This is CPU inference, not Apple Metal or GPU acceleration. To use the original Paddle engine instead:
+
+```bash
+SEENFLOW_OCR_ENGINE=paddle seenflow test flow.yaml
+```
+
+On the checked-in merged-row fixture, five warm runs produced medians of `83.9ms` with ONNX Runtime and `271.8ms` with Paddle while returning identical text, boxes, word spans, and provenance. Actual device screenshots also include capture and IPC time.
+
 ## Compile
 
 ```bash

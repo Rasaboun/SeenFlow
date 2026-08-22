@@ -23,7 +23,9 @@ class PaddleOCRProvider:
         factory: Callable[..., Any] = _create_engine,
         engine: str | None = None,
     ) -> None:
-        selected_engine = engine or os.environ.get("SEENFLOW_OCR_ENGINE", "paddle")
+        selected_engine = engine or os.environ.get(
+            "SEENFLOW_OCR_ENGINE", "onnxruntime"
+        )
         if selected_engine not in {"paddle", "onnxruntime"}:
             raise ValueError(
                 "SEENFLOW_OCR_ENGINE must be 'paddle' or 'onnxruntime', "

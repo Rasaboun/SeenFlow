@@ -31,7 +31,7 @@ class FakeEngine:
         return [self.result()]
 
 
-def test_paddle_provider_initializes_once_and_converts_results() -> None:
+def test_paddle_provider_initializes_default_onnx_once_and_converts_results() -> None:
     engine = FakeEngine()
     initializations: list[dict[str, Any]] = []
 
@@ -66,6 +66,7 @@ def test_paddle_provider_initializes_once_and_converts_results() -> None:
             "use_doc_unwarping": False,
             "use_textline_orientation": False,
             "return_word_box": True,
+            "engine": "onnxruntime",
         }
     ]
     assert len(engine.inputs) == 2
