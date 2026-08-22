@@ -34,7 +34,7 @@ final class FixtureView: UIView {
     }
 
     private func spatialButton(centerY: CGFloat) -> CGRect {
-        CGRect(x: bounds.width * 0.75 - 70, y: centerY - 40, width: 140, height: 80)
+        CGRect(x: bounds.width * 0.70 - 70, y: centerY - 40, width: 140, height: 80)
     }
 
     override func draw(_ rect: CGRect) {
@@ -45,10 +45,10 @@ final class FixtureView: UIView {
             }
             let firstRow = bounds.midY - 130
             let secondRow = bounds.midY + 130
-            draw("Chicken Curry", centerY: firstRow, color: .black, size: 26, centerX: bounds.width * 0.32)
-            draw("Edit", centerY: firstRow, color: .systemBlue, size: 26, centerX: bounds.width * 0.75)
-            draw("Pasta", centerY: secondRow, color: .black, size: 26, centerX: bounds.width * 0.32)
-            draw("Edit", centerY: secondRow, color: .systemBlue, size: 26, centerX: bounds.width * 0.75)
+            draw("Chicken Curry", centerY: firstRow, color: .black, size: 26, centerX: bounds.width * 0.36)
+            draw("Edit", centerY: firstRow, color: .systemBlue, size: 26, centerX: bounds.width * 0.70)
+            draw("Pasta", centerY: secondRow, color: .black, size: 26, centerX: bounds.width * 0.36)
+            draw("Edit", centerY: secondRow, color: .systemBlue, size: 26, centerX: bounds.width * 0.70)
             return
         }
         if longPressMode {
