@@ -1,5 +1,6 @@
 from typing import Any
 
+import pytest
 from PIL import Image
 
 from seenflow.models import BoundingBox, OCRItem
@@ -68,6 +69,47 @@ def test_paddle_provider_initializes_once_and_converts_results() -> None:
         }
     ]
     assert len(engine.inputs) == 2
+
+
+def test_paddle_provider_selects_onnx_runtime_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("SEENFLOW_OCR_ENGINE", "onnxruntime")
+    initializations: list[dict[str, Any]] = []
+
+    PaddleOCRProvider(
+        lambda **options: initializations.append(options) or FakeEngine()
+    )
+
+    assert initializations[0]["engine"] == "onnxruntime"
+
+
+def test_paddle_provider_explicit_engine_overrides_environment(monkeypatch) -> None:
+    monkeypatch.setenv("SEENFLOW_OCR_ENGINE", "onnxruntime")
+    initializations: list[dict[str, Any]] = []
+
+    PaddleOCRProvider(
+        lambda **options: initializations.append(options) or FakeEngine(),
+        engine="paddle",
+    )
+
+    assert "engine" not in initializations[0]
+
+
+def test_paddle_provider_rejects_unknown_engine(monkeypatch) -> None:
+    monkeypatch.setenv("SEENFLOW_OCR_ENGINE", "metal")
+
+    with pytest.raises(ValueError, match="SEENFLOW_OCR_ENGINE.*paddle.*onnxruntime"):
+        PaddleOCRProvider(lambda **_options: FakeEngine())
+
+
+def test_paddle_provider_reports_onnx_initialization_failure() -> None:
+    def fail(**_options: Any) -> FakeEngine:
+        raise RuntimeError("missing runtime")
+
+    with pytest.raises(
+        RuntimeError,
+        match="Failed to initialize OCR engine 'onnxruntime'.*missing runtime",
+    ):
+        PaddleOCRProvider(fail, engine="onnxruntime")
 
 
 def test_paddle_provider_downscales_large_screens_and_restores_original_boxes() -> None:

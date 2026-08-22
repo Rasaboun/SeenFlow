@@ -9,6 +9,7 @@ requires-python = ">=3.11"
 dependencies = [
   "fastapi",
   "numpy",
+  "onnxruntime==1.28.0",
   "paddleocr==3.7.0",
   "paddlepaddle==3.3.0",
   "pillow",

@@ -1,3 +1,4 @@
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -17,8 +18,18 @@ def _create_engine(**options: Any) -> Any:
 
 
 class PaddleOCRProvider:
-    def __init__(self, factory: Callable[..., Any] = _create_engine) -> None:
-        self._engine = factory(
+    def __init__(
+        self,
+        factory: Callable[..., Any] = _create_engine,
+        engine: str | None = None,
+    ) -> None:
+        selected_engine = engine or os.environ.get("SEENFLOW_OCR_ENGINE", "paddle")
+        if selected_engine not in {"paddle", "onnxruntime"}:
+            raise ValueError(
+                "SEENFLOW_OCR_ENGINE must be 'paddle' or 'onnxruntime', "
+                f"got {selected_engine!r}"
+            )
+        options = dict(
             text_detection_model_name="PP-OCRv6_tiny_det",
             text_recognition_model_name="PP-OCRv6_tiny_rec",
             use_doc_orientation_classify=False,
@@ -26,6 +37,16 @@ class PaddleOCRProvider:
             use_textline_orientation=False,
             return_word_box=True,
         )
+        if selected_engine == "onnxruntime":
+            options["engine"] = selected_engine
+        try:
+            self._engine = factory(**options)
+        except Exception as error:
+            if selected_engine != "onnxruntime":
+                raise
+            raise RuntimeError(
+                f"Failed to initialize OCR engine 'onnxruntime': {error}"
+            ) from error
 
     def detect(self, image: Image) -> list[OCRItem]:
         working = image.convert("RGB")
