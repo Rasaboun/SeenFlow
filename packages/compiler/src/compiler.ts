@@ -94,7 +94,9 @@ function compileAction(action: FlowAction, runtimePath: string, step: number): u
       step,
     );
   }
-  const description = `visionTap ${JSON.stringify(action.text)}`;
+  const description = action.spatial
+    ? `visionTap ${JSON.stringify(action.text)} ${action.spatial.relation} ${JSON.stringify(action.spatial.anchor.text)}`
+    : `visionTap ${JSON.stringify(action.text)}`;
   return transition(
     action.expect,
     visionTap(action, runtimePath, description, step),
@@ -117,6 +119,7 @@ function visionTap(
       MATCH: action.match,
       THRESHOLD: String(action.threshold),
       OCCURRENCE: String(action.occurrence),
+      ...(action.spatial ? { SPATIAL: JSON.stringify(action.spatial) } : {}),
       ACTION: description,
       STEP: String(step),
     }),

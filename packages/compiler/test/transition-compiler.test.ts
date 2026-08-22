@@ -102,6 +102,44 @@ describe("compileFlow", () => {
     ]);
   });
 
+  test("compiles a spatial visionTap into the existing runtime bridge", () => {
+    const result = compile([
+      "- visionTap:",
+      "    text: Edit",
+      "    rightOf:",
+      "      text: Chicken Curry",
+      "      maxDistance: 20",
+      "    expect:",
+      "      visibleText: Edit recipe",
+    ]);
+
+    const commands = documents(result.yaml)[1] as Array<Record<string, unknown>>;
+    expect(commands[1]).toEqual({
+      runScript: {
+        file: ".seenflow/runtime/find-text.js",
+        env: {
+          TEXT: "Edit",
+          MATCH: "exact",
+          THRESHOLD: "0.85",
+          OCCURRENCE: "0",
+          SPATIAL: JSON.stringify({
+            relation: "rightOf",
+            anchor: {
+              text: "Chicken Curry",
+              match: "exact",
+              threshold: 0.85,
+              occurrence: 0,
+            },
+            maxDistance: 20,
+          }),
+          ACTION: 'visionTap "Edit" rightOf "Chicken Curry"',
+          STEP: "1",
+        },
+      },
+    });
+    expect(commands).not.toContainEqual(expect.objectContaining({ rightOf: expect.anything() }));
+  });
+
   test("skips only the inverse assertion when transitions are optional", () => {
     const result = compile([
       "- visionTap:",
