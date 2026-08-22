@@ -43,7 +43,7 @@ If `Saved` is visible before the tap, the flow fails before the action. Use `req
 - Bun;
 - Python 3.11+ and `uv`.
 
-Physical iOS devices and Maestro Cloud are not supported in v0.2.
+Physical iOS devices and Maestro Cloud are not supported in v0.3.
 
 ## Install from source
 
@@ -92,6 +92,17 @@ appId: com.example.app
     expect:
       visibleText: "2 items"
 
+- visionTap:
+    text: "Edit"
+    rightOf:
+      text: "Chicken Curry"
+      match: exact
+      threshold: 0.85
+      occurrence: 0
+      maxDistance: 20
+    expect:
+      visibleText: "Edit recipe"
+
 - tapOn:
     id: "save-button"
     retryTapIfNoChange: true
@@ -111,6 +122,10 @@ appId: com.example.app
 ```
 
 `visionTap` defaults to exact matching, threshold `0.85`, occurrence `0`, and timeout `7000ms`. Expanded `tapOn`, `swipe`, and `longPressOn` keep all native Maestro properties and use OCR only for their expected effects. Normal and unknown Maestro commands pass through unchanged. Effectless `swipe` and `longPressOn` remain compatible and emit transition-safety warnings; existing `tapOn` strictness is unchanged.
+
+Spatial `visionTap` supports exactly one of `near`, `above`, `below`, `leftOf`, or `rightOf`. The nested anchor uses the same `match`, `threshold`, and zero-based `occurrence` options, with defaults of `exact`, `0.85`, and `0`. `maxDistance` is required and measures center-to-center distance as a percentage of the screen diagonal.
+
+Directional relationships use a 90-degree cone so `rightOf`, for example, rejects candidates that are mostly above or below the anchor. Valid targets are ranked by distance, match score, OCR confidence, then screen order before the target occurrence is applied. Anchor and target resolution use the same fresh screenshot and OCR result.
 
 Effects are screenshot-based OCR assertions. They support exactly one of `visibleText` or `notVisibleText`. Matching Unicode-normalizes, trims, collapses whitespace, and case-folds without globally removing punctuation.
 
@@ -144,6 +159,7 @@ examples/fixtures/ios/build.sh
 xcrun simctl install <UDID> .seenflow/fixtures/ios/SeenflowFixture.app
 seenflow test examples/ios/continue-welcome.yaml --device <UDID>
 seenflow test examples/ios/long-press-actions.yaml --device <UDID>
+seenflow test examples/ios/spatial-edit.yaml --device <UDID>
 ```
 
 Android (SDK 34 platform and build-tools 35):
@@ -153,13 +169,14 @@ ANDROID_SDK_ROOT=/path/to/sdk examples/fixtures/android/build.sh
 adb -s <UDID> install -r .seenflow/fixtures/android/SeenflowFixture.apk
 seenflow test examples/android/continue-welcome.yaml --device <UDID>
 seenflow test examples/android/swipe-orders.yaml --device <UDID>
+seenflow test examples/android/spatial-edit.yaml --device <UDID>
 ```
 
-Both fixture apps draw their labels directly into pixels and hide accessibility descendants. They cover OCR tapping, native swipe and long-press effects, and transition-safety failure before an action.
+Both fixture apps draw their labels directly into pixels and hide accessibility descendants. They cover OCR tapping, spatial disambiguation of duplicate text, native swipe and long-press effects, and transition-safety failure before an action.
 
 ## Scope
 
-v0.2 deliberately excludes VLMs/LLMs, image or icon selectors, template matching, video generation, visual regression, Appium, custom gesture implementations, parallel stability runs, physical iOS devices, Maestro Cloud, and changes to Maestro itself. Screenshot capture is the only device operation owned by the sidecar.
+v0.3 deliberately excludes spatial expected effects, combined spatial relationships, arbitrary regions, OCR line grouping, VLMs/LLMs, image or icon selectors, template matching, video generation, visual regression, Appium, custom gesture implementations, parallel stability runs, physical iOS devices, Maestro Cloud, and changes to Maestro itself. Screenshot capture is the only device operation owned by the sidecar.
 
 ## Development
 

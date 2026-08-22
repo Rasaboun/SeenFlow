@@ -1,0 +1,18 @@
+appId: com.example.seenflowfixture
+---
+
+- launchApp:
+    clearState: true
+    arguments:
+      spatialMode: true
+
+- visionTap:
+    text: "Edit"
+    rightOf:
+      text: "Chicken Curry"
+      match: exact
+      threshold: 0.85
+      occurrence: 0
+      maxDistance: 20
+    expect:
+      visibleText: "Edit recipe"

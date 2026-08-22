@@ -6,6 +6,9 @@ final class FixtureView: UIView {
     private let longPressMode = ProcessInfo.processInfo.arguments.contains {
         $0.contains("longPressMode")
     }
+    private let spatialMode = ProcessInfo.processInfo.arguments.contains {
+        $0.contains("spatialMode")
+    }
     private let welcomeInitiallyVisible = ProcessInfo.processInfo.arguments.contains {
         $0.contains("welcomeInitiallyVisible")
     }
@@ -30,7 +33,24 @@ final class FixtureView: UIView {
         CGRect(x: bounds.midX - 150, y: bounds.midY - 45, width: 300, height: 90)
     }
 
+    private func spatialButton(centerY: CGFloat) -> CGRect {
+        CGRect(x: bounds.width * 0.75 - 70, y: centerY - 40, width: 140, height: 80)
+    }
+
     override func draw(_ rect: CGRect) {
+        if spatialMode {
+            if tapped {
+                draw("Edit recipe", centerY: bounds.midY, color: .black, size: 44)
+                return
+            }
+            let firstRow = bounds.midY - 130
+            let secondRow = bounds.midY + 130
+            draw("Chicken Curry", centerY: firstRow, color: .black, size: 26, centerX: bounds.width * 0.32)
+            draw("Edit", centerY: firstRow, color: .systemBlue, size: 26, centerX: bounds.width * 0.75)
+            draw("Pasta", centerY: secondRow, color: .black, size: 26, centerX: bounds.width * 0.32)
+            draw("Edit", centerY: secondRow, color: .systemBlue, size: 26, centerX: bounds.width * 0.75)
+            return
+        }
         if longPressMode {
             draw(longPressed ? "Actions" : "Press and hold", centerY: bounds.midY, color: .black, size: 52)
             return
@@ -48,6 +68,13 @@ final class FixtureView: UIView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if spatialMode {
+            guard let point = touches.first?.location(in: self) else { return }
+            guard spatialButton(centerY: bounds.midY - 130).contains(point) else { return }
+            tapped = true
+            setNeedsDisplay()
+            return
+        }
         guard !longPressMode else { return }
         guard let point = touches.first?.location(in: self), buttonRect.contains(point) else { return }
         tapped = true
@@ -60,14 +87,20 @@ final class FixtureView: UIView {
         setNeedsDisplay()
     }
 
-    private func draw(_ text: String, centerY: CGFloat, color: UIColor, size: CGFloat) {
+    private func draw(
+        _ text: String,
+        centerY: CGFloat,
+        color: UIColor,
+        size: CGFloat,
+        centerX: CGFloat? = nil
+    ) {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: size, weight: .bold),
             .foregroundColor: color,
         ]
         let measured = text.size(withAttributes: attributes)
         text.draw(
-            at: CGPoint(x: bounds.midX - measured.width / 2, y: centerY - measured.height / 2),
+            at: CGPoint(x: (centerX ?? bounds.midX) - measured.width / 2, y: centerY - measured.height / 2),
             withAttributes: attributes
         )
     }
