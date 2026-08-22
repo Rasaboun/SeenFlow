@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from seenflow.matching import (
@@ -45,9 +46,10 @@ def test_real_ocr_fixture_preserves_boxes_and_visual_order() -> None:
     assert find_matches(lines, "Chicken Katzu", "fuzzy", 0.85)[0].item.text == "Chicken Katsu"
 
 
-def test_real_ocr_refines_a_merged_spatial_row() -> None:
+@pytest.mark.parametrize("engine", ["paddle", "onnxruntime"])
+def test_real_ocr_refines_a_merged_spatial_row(engine: str) -> None:
     image = Image.open(SPATIAL_FIXTURE)
-    items = PaddleOCRProvider().detect(image)
+    items = PaddleOCRProvider(engine=engine).detect(image)
 
     line = next(
         item
@@ -61,7 +63,16 @@ def test_real_ocr_refines_a_merged_spatial_row() -> None:
     )
 
     assert line.box.width > anchor.item.box.width
-    assert anchor.item.source == "phrase"
+    assert (
+        anchor.item.source,
+        anchor.item.span_start,
+        anchor.item.span_end,
+    ) == ("phrase", 0, 2)
     assert evaluations[0].accepted
-    assert evaluations[0].match.item.source == "word"
+    assert (
+        evaluations[0].match.item.source,
+        evaluations[0].match.item.span_start,
+        evaluations[0].match.item.span_end,
+    ) == ("word", 2, 3)
+    assert anchor.item.line_id == evaluations[0].match.item.line_id
     assert evaluations[0].match.item.box.x > anchor.item.box.x + anchor.item.box.width
