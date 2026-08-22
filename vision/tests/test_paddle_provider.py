@@ -113,6 +113,30 @@ def test_paddle_provider_ignores_malformed_word_geometry_for_that_line() -> None
             0.97,
             BoundingBox(10, 20, 180, 40),
             line_id=0,
+            refinement_error="MALFORMED_WORD_GEOMETRY",
+        )
+    ]
+
+
+def test_paddle_provider_marks_unavailable_word_geometry() -> None:
+    class MissingResult:
+        json = {
+            "res": {
+                "rec_texts": ["Save"],
+                "rec_scores": [0.97],
+                "rec_boxes": [[10, 20, 50, 60]],
+            }
+        }
+
+    provider = PaddleOCRProvider(lambda **_options: FakeEngine(MissingResult))
+
+    assert provider.detect(Image.new("RGB", (200, 120))) == [
+        OCRItem(
+            "Save",
+            0.97,
+            BoundingBox(10, 20, 40, 40),
+            line_id=0,
+            refinement_error="WORD_BOXES_UNAVAILABLE",
         )
     ]
 

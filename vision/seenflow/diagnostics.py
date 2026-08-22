@@ -38,8 +38,19 @@ def save_visual_artifacts(
     candidate_boxes = {match.item.box for match in candidates}
     for item in items:
         box = item.box
-        color = "#ffbf00" if box in candidate_boxes else "#ff3b30"
+        color = "#ffbf00" if box in candidate_boxes else {
+            "line": "#ff3b30",
+            "word": "#0a84ff",
+            "phrase": "#0a84ff",
+        }[item.source]
         draw.rectangle((box.x, box.y, box.x + box.width, box.y + box.height), outline=color, width=3)
+    for match in candidates:
+        box = match.item.box
+        draw.rectangle(
+            (box.x, box.y, box.x + box.width, box.y + box.height),
+            outline="#ffbf00",
+            width=3,
+        )
     marked.save(annotated, "PNG")
     payload = {
         "selector": selector,
@@ -60,8 +71,16 @@ def save_visual_artifacts(
 
 def _item_json(item: OCRItem) -> dict[str, object]:
     box = item.box
-    return {
+    payload: dict[str, object] = {
         "text": item.text,
         "confidence": item.confidence,
         "box": {"x": box.x, "y": box.y, "width": box.width, "height": box.height},
+        "source": item.source,
     }
+    if item.line_id is not None:
+        payload["lineId"] = item.line_id
+    if item.span_start is not None and item.span_end is not None:
+        payload["span"] = {"start": item.span_start, "end": item.span_end}
+    if item.refinement_error is not None:
+        payload["refinementError"] = item.refinement_error
+    return payload

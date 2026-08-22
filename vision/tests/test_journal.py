@@ -5,7 +5,7 @@ import pytest
 from PIL import Image
 
 from seenflow.journal import VisualJournal
-from seenflow.models import BoundingBox, OCRItem
+from seenflow.models import BoundingBox, OCRItem, OCRMatch
 
 
 def test_journal_records_exact_step_artifacts_and_ordered_manifest(tmp_path: Path) -> None:
@@ -122,3 +122,50 @@ def test_journal_records_spatial_evidence_in_manifest_and_ocr_json(tmp_path: Pat
     assert manifest["entries"][0]["spatial"] == details
     ocr_json = json.loads(Path(paths["ocr"]).read_text())
     assert ocr_json["spatial"] == details
+
+
+def test_journal_records_and_draws_box_provenance(tmp_path: Path) -> None:
+    journal = VisualJournal(tmp_path)
+    line = OCRItem(
+        "Chicken Curry",
+        0.97,
+        BoundingBox(10, 10, 50, 30),
+        "line",
+        0,
+        refinement_error="MALFORMED_WORD_GEOMETRY",
+    )
+    word = OCRItem("Chicken", 0.97, BoundingBox(20, 20, 20, 10), "word", 0, 0, 1)
+    phrase = OCRItem("Chicken Curry", 0.97, BoundingBox(80, 10, 40, 20), "phrase", 0, 0, 2)
+
+    paths = journal.record(
+        run_id="run-provenance",
+        step=1,
+        phase="target",
+        attempt=1,
+        action='visionTap "Chicken Curry"',
+        state=None,
+        image=Image.new("RGB", (140, 60), "white"),
+        items=[line, word],
+        selector={"text": "Chicken Curry"},
+        candidates=[OCRMatch(phrase, 1.0)],
+        found=True,
+        capture_ms=10.0,
+        ocr_ms=20.0,
+    )
+
+    ocr_json = json.loads(Path(paths["ocr"]).read_text())
+    assert ocr_json["detections"][1] == {
+        "text": "Chicken",
+        "confidence": 0.97,
+        "box": {"x": 20, "y": 20, "width": 20, "height": 10},
+        "source": "word",
+        "lineId": 0,
+        "span": {"start": 0, "end": 1},
+    }
+    assert ocr_json["detections"][0]["refinementError"] == "MALFORMED_WORD_GEOMETRY"
+    assert ocr_json["candidates"][0]["source"] == "phrase"
+
+    annotated = Image.open(paths["annotated"]).convert("RGB")
+    assert annotated.getpixel((10, 10)) == (255, 59, 48)
+    assert annotated.getpixel((20, 20)) == (10, 132, 255)
+    assert annotated.getpixel((80, 10)) == (255, 191, 0)

@@ -39,7 +39,7 @@ class PaddleOCRProvider:
             for result_line, (text, confidence, box) in enumerate(zip(
                 data["rec_texts"], data["rec_scores"], data["rec_boxes"], strict=True
             )):
-                words, word_boxes = _word_geometry(data, result_line)
+                words, word_boxes, refinement_error = _word_geometry(data, result_line)
                 items.append(
                     OCRItem(
                         text=str(text),
@@ -48,6 +48,7 @@ class PaddleOCRProvider:
                         line_id=line_id,
                         span_start=0 if words is not None else None,
                         span_end=len(words) if words is not None else None,
+                        refinement_error=refinement_error,
                     )
                 )
                 if words is not None and word_boxes is not None:
@@ -71,31 +72,40 @@ class PaddleOCRProvider:
 
 def _word_geometry(
     data: dict[str, Any], line: int
-) -> tuple[list[str] | None, list[Any] | None]:
+) -> tuple[list[str] | None, list[Any] | None, str | None]:
     try:
-        words = data["text_word"][line]
-        boxes = data["text_word_boxes"][line]
+        word_lines = data["text_word"]
+        box_lines = data["text_word_boxes"]
+    except KeyError:
+        return None, None, "WORD_BOXES_UNAVAILABLE"
+    try:
+        words = word_lines[line]
+        boxes = box_lines[line]
         if (
             isinstance(words, (str, bytes))
             or isinstance(boxes, (str, bytes))
             or not words
             or len(words) != len(boxes)
         ):
-            return None, None
+            return None, None, "MALFORMED_WORD_GEOMETRY"
         word_pairs = [
             (str(word).strip(), box)
             for word, box in zip(words, boxes, strict=True)
             if str(word).strip()
         ]
         if not word_pairs:
-            return None, None
+            return None, None, "MALFORMED_WORD_GEOMETRY"
         for _word, box in word_pairs:
             if len(box) != 4:
-                return None, None
+                return None, None, "MALFORMED_WORD_GEOMETRY"
             tuple(float(value) for value in box)
-    except (KeyError, IndexError, TypeError, ValueError):
-        return None, None
-    return [word for word, _box in word_pairs], [box for _word, box in word_pairs]
+    except (IndexError, TypeError, ValueError):
+        return None, None, "MALFORMED_WORD_GEOMETRY"
+    return (
+        [word for word, _box in word_pairs],
+        [box for _word, box in word_pairs],
+        None,
+    )
 
 
 def _scaled_box(box: Any, scale_x: float, scale_y: float) -> BoundingBox:

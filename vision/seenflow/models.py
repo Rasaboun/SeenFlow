@@ -22,6 +22,7 @@ class OCRItem:
     line_id: int | None = None
     span_start: int | None = None
     span_end: int | None = None
+    refinement_error: str | None = None
 
 
 @dataclass(frozen=True)

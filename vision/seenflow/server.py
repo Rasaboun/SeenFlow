@@ -474,11 +474,19 @@ def analyze(app: FastAPI, platform: str, device_id: str) -> tuple[Image.Image, l
 
 
 def item_json(item: OCRItem) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "text": item.text,
         "confidence": item.confidence,
         "box": box_json(item.box),
+        "source": item.source,
     }
+    if item.line_id is not None:
+        payload["lineId"] = item.line_id
+    if item.span_start is not None and item.span_end is not None:
+        payload["span"] = {"start": item.span_start, "end": item.span_end}
+    if item.refinement_error is not None:
+        payload["refinementError"] = item.refinement_error
+    return payload
 
 
 def box_json(box: BoundingBox) -> dict[str, int]:

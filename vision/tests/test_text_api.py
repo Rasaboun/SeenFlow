@@ -81,7 +81,19 @@ def spatial(
 
 
 def test_detect_returns_screen_dimensions_and_all_ocr_items() -> None:
-    provider = FakeProvider([OCRItem("Save", 0.97, BoundingBox(80, 40, 40, 20))])
+    provider = FakeProvider(
+        [
+            OCRItem(
+                "Save",
+                0.97,
+                BoundingBox(80, 40, 40, 20),
+                "word",
+                3,
+                1,
+                2,
+            )
+        ]
+    )
     api, capture = client(provider)
 
     response = api.post("/v1/text/detect", json={"platform": "ios", "deviceId": "ABC-123"})
@@ -95,6 +107,9 @@ def test_detect_returns_screen_dimensions_and_all_ocr_items() -> None:
                 "text": "Save",
                 "confidence": 0.97,
                 "box": {"x": 80, "y": 40, "width": 40, "height": 20},
+                "source": "word",
+                "lineId": 3,
+                "span": {"start": 1, "end": 2},
             }
         ],
     }
@@ -131,9 +146,48 @@ def test_find_returns_deterministic_match_and_percentage_coordinates() -> None:
             "confidence": 0.8,
             "score": 1.0,
             "box": {"x": 120, "y": 50, "width": 40, "height": 20},
+            "source": "line",
             "center": {"x": 140.0, "y": 60.0},
             "normalized": {"x": 70.0, "y": 60.0},
         },
+    }
+
+
+def test_find_reports_reconstructed_phrase_provenance() -> None:
+    provider = FakeProvider(
+        [
+            OCRItem(
+                "Chicken Curry Edit",
+                0.97,
+                BoundingBox(10, 20, 180, 40),
+                "line",
+                0,
+                0,
+                3,
+            ),
+            OCRItem("Chicken", 0.97, BoundingBox(10, 20, 65, 40), "word", 0, 0, 1),
+            OCRItem("Curry", 0.97, BoundingBox(80, 20, 45, 40), "word", 0, 1, 2),
+            OCRItem("Edit", 0.97, BoundingBox(150, 20, 40, 40), "word", 0, 2, 3),
+        ]
+    )
+    api, _capture = client(provider)
+
+    response = api.post(
+        "/v1/text/find",
+        json={"platform": "ios", "deviceId": "ABC-123", "text": "Chicken Curry"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["match"] == {
+        "text": "Chicken Curry",
+        "confidence": 0.97,
+        "score": 1.0,
+        "box": {"x": 10, "y": 20, "width": 115, "height": 40},
+        "source": "phrase",
+        "lineId": 0,
+        "span": {"start": 0, "end": 2},
+        "center": {"x": 67.5, "y": 40.0},
+        "normalized": {"x": 33.75, "y": 40.0},
     }
 
 
