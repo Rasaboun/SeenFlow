@@ -60,8 +60,8 @@ def test_paddle_provider_downscales_large_screens_and_restores_original_boxes() 
 
     items = provider.detect(Image.new("RGB", (1200, 2400)))
 
-    assert engine.inputs[0].shape[:2] == (1200, 600)
+    assert engine.inputs[0].shape[:2] == (960, 480)
     assert items == [
-        OCRItem("Save", 0.97, BoundingBox(20, 40, 80, 80)),
-        OCRItem("Loading...", 0.91, BoundingBox(140, 160, 200, 40)),
+        OCRItem("Save", 0.97, BoundingBox(25, 50, 100, 100)),
+        OCRItem("Loading...", 0.91, BoundingBox(175, 200, 250, 50)),
     ]

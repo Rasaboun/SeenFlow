@@ -7,7 +7,7 @@ from PIL.Image import Image, Resampling
 from seenflow.models import BoundingBox, OCRItem
 
 
-MAX_OCR_DIMENSION = 1200
+MAX_OCR_DIMENSION = 960
 
 
 def _create_engine(**options: Any) -> Any:
