@@ -32,6 +32,10 @@ var result = requestFind({
   threshold: Number(THRESHOLD),
   occurrence: Number(OCCURRENCE),
   context: "target",
+  runId: SEENFLOW_RUN_ID,
+  step: Number(STEP),
+  action: actionDescription,
+  attempt: 1,
 });
 
 if (!result || typeof result.found !== "boolean") {

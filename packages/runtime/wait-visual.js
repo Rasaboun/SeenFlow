@@ -20,6 +20,9 @@ function findVisualText(diagnostics, attempt) {
     context: "postcondition",
     state: STATE,
     attempt: attempt,
+    runId: SEENFLOW_RUN_ID,
+    step: Number(STEP),
+    action: actionDescription,
   };
   if (diagnostics) payload.diagnostics = true;
   var response = http.post(SEENFLOW_URL + "/v1/text/find", {

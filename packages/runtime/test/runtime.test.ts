@@ -16,6 +16,8 @@ function baseGlobals(body: unknown, overrides: Record<string, unknown> = {}) {
     globals: {
       SEENFLOW_URL: "http://127.0.0.1:43123",
       SEENFLOW_TOKEN: "secret-token",
+      SEENFLOW_RUN_ID: "run-123",
+      STEP: "2",
       MAESTRO_DEVICE_UDID: "device-123",
       maestro: { platform: "ios" },
       http: { post },
@@ -60,6 +62,10 @@ describe("Maestro runtime bridge", () => {
         threshold: 0.85,
         occurrence: 0,
         context: "target",
+        runId: "run-123",
+        step: 2,
+        action: 'visionTap "Save"',
+        attempt: 1,
       }),
     });
     expect(globals.output).toEqual({
@@ -150,7 +156,29 @@ describe("Maestro runtime bridge", () => {
     expect(JSON.parse((post.mock.calls[0]?.[1] as { body: string }).body)).toMatchObject({
       context: "precondition",
       state: "not-visible",
+      runId: "run-123",
+      step: 2,
+      action: "supported action",
+      attempt: 1,
     });
+  });
+
+  test("precondition failures expose artifacts from the evaluated screenshot", () => {
+    const { globals } = baseGlobals({
+      found: true,
+      query: "Saved",
+      detections: [{ text: "Saved", confidence: 0.99 }],
+      artifacts: { annotated: ".seenflow/artifacts/run-123/2-precondition-1/annotated.png" },
+    });
+
+    expect(() =>
+      execute("assert-visual.js", {
+        ...globals,
+        ACTION: 'visionTap "Save"',
+        TEXT: "Saved",
+        STATE: "not-visible",
+      }),
+    ).toThrowError(/PRECONDITION_FAILED[\s\S]*Saved[\s\S]*annotated\.png/);
   });
 
   test("wait-visual polls until the visual postcondition is satisfied", () => {
@@ -177,6 +205,9 @@ describe("Maestro runtime bridge", () => {
       context: "postcondition",
       state: "visible",
       attempt: 2,
+      runId: "run-123",
+      step: 2,
+      action: "supported action",
     });
   });
 
