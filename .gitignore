@@ -3,6 +3,7 @@
 # Legacy pre-rename workspace
 .maestro-vision/
 .superpowers/
+.worktrees/
 docs/
 
 # Node.js
