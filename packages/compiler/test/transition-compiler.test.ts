@@ -69,18 +69,14 @@ describe("compileFlow", () => {
     expect(documents(result.yaml)[1]).toEqual([
       {
         runScript: {
-          file: ".seenflow/runtime/assert-visual.js",
-          env: { TEXT: "Loading...", STATE: "visible", ACTION: 'visionTap "Save"', STEP: "1" },
-        },
-      },
-      {
-        runScript: {
           file: ".seenflow/runtime/find-text.js",
           env: {
             TEXT: "Save",
             MATCH: "exact",
             THRESHOLD: "0.85",
             OCCURRENCE: "0",
+            PRECONDITION_TEXT: "Loading...",
+            PRECONDITION_STATE: "visible",
             ACTION: 'visionTap "Save"',
             STEP: "1",
           },
@@ -114,7 +110,7 @@ describe("compileFlow", () => {
     ]);
 
     const commands = documents(result.yaml)[1] as Array<Record<string, unknown>>;
-    expect(commands[1]).toEqual({
+    expect(commands[0]).toEqual({
       runScript: {
         file: ".seenflow/runtime/find-text.js",
         env: {
@@ -132,6 +128,8 @@ describe("compileFlow", () => {
             },
             maxDistance: 20,
           }),
+          PRECONDITION_TEXT: "Edit recipe",
+          PRECONDITION_STATE: "not-visible",
           ACTION: 'visionTap "Edit" rightOf "Chicken Curry"',
           STEP: "1",
         },
@@ -212,7 +210,6 @@ describe("compileFlow", () => {
     const result = compileFlow(source, "flow.yaml", { runtimePath: "../runtime" });
 
     expect(documents(result.yaml)[1]).toMatchObject([
-      { runScript: { file: "../runtime/assert-visual.js" } },
       { runScript: { file: "../runtime/find-text.js" } },
       { tapOn: expect.anything() },
       { runScript: { file: "../runtime/wait-visual.js" } },

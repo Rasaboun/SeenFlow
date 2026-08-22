@@ -115,6 +115,56 @@ describe("Maestro runtime bridge", () => {
     });
   });
 
+  test("find-text rejects an already-satisfied effect from the target screenshot", () => {
+    const { globals, post } = baseGlobals({
+      found: true,
+      match: {
+        text: "Save",
+        confidence: 0.97,
+        normalized: { x: 51.33, y: 78.21 },
+      },
+      precondition: { found: true, query: "Saved", state: "not-visible" },
+      detections: [{ text: "Saved", confidence: 0.99 }],
+      artifacts: { annotated: ".seenflow/artifacts/run/annotated.png" },
+    });
+
+    expect(() =>
+      execute("find-text.js", {
+        ...globals,
+        ACTION: 'visionTap "Save"',
+        TEXT: "Save",
+        MATCH: "exact",
+        THRESHOLD: "0.85",
+        OCCURRENCE: "0",
+        PRECONDITION_TEXT: "Saved",
+        PRECONDITION_STATE: "not-visible",
+      }),
+    ).toThrowError(/PRECONDITION_FAILED[\s\S]*Saved[\s\S]*annotated\.png/);
+    expect(JSON.parse((post.mock.calls[0]?.[1] as { body: string }).body)).toMatchObject({
+      precondition: { text: "Saved", state: "not-visible" },
+    });
+    expect(globals.output).toEqual({});
+  });
+
+  test("find-text rejects a mismatched precondition response", () => {
+    const { globals } = baseGlobals({
+      found: true,
+      precondition: { found: false, query: "Other", state: "visible" },
+    });
+
+    expect(() =>
+      execute("find-text.js", {
+        ...globals,
+        TEXT: "Save",
+        MATCH: "exact",
+        THRESHOLD: "0.85",
+        OCCURRENCE: "0",
+        PRECONDITION_TEXT: "Saved",
+        PRECONDITION_STATE: "not-visible",
+      }),
+    ).toThrowError(/OCR_RUNTIME_FAILED[\s\S]*invalid precondition response/);
+  });
+
   test("find-text rejects malformed spatial configuration", () => {
     const { globals } = baseGlobals({ found: false });
 

@@ -64,12 +64,27 @@ class SpatialSelector(BaseModel):
     max_distance: float = Field(alias="maxDistance", gt=0, le=100)
 
 
+class VisualCondition(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    text: str = Field(min_length=1)
+    state: Literal["visible", "not-visible"]
+
+    @field_validator("text")
+    @classmethod
+    def reject_blank_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("text must not be blank")
+        return value
+
+
 class FindRequest(DetectRequest):
     text: str = Field(min_length=1)
     match: Literal["exact", "contains", "fuzzy"] = "exact"
     threshold: float = Field(default=0.85, ge=0, le=1)
     occurrence: int = Field(default=0, ge=0)
     spatial: SpatialSelector | None = None
+    precondition: VisualCondition | None = None
     diagnostics: bool = False
     context: Literal["target", "precondition", "postcondition"] | None = None
     state: Literal["visible", "not-visible"] | None = None
@@ -174,6 +189,12 @@ def create_app(
     @app.post("/v1/text/find")
     async def find(request: FindRequest) -> dict[str, object]:
         journaled = request.run_id is not None
+        error_phase = "precondition" if request.precondition is not None else request.context
+        error_state = (
+            request.precondition.state
+            if request.precondition is not None
+            else request.state
+        )
         if journaled:
             app.state.journal.remember_context(
                 request.run_id,
@@ -189,10 +210,10 @@ def create_app(
                 app.state.journal.record_error(
                     run_id=request.run_id,
                     step=request.step,
-                    phase=request.context,
+                    phase=error_phase,
                     attempt=request.attempt,
                     action=request.action,
-                    state=request.state,
+                    state=error_state,
                     code="OCR_CAPTURE_FAILED",
                     message=str(error.detail["message"]),
                 )
@@ -204,10 +225,10 @@ def create_app(
                 artifacts = app.state.journal.record_error(
                     run_id=request.run_id,
                     step=request.step,
-                    phase=request.context,
+                    phase=error_phase,
                     attempt=request.attempt,
                     action=request.action,
-                    state=request.state,
+                    state=error_state,
                     code="OCR_RUNTIME_FAILED",
                     message=str(error.detail["message"]),
                     image=image,
@@ -215,6 +236,62 @@ def create_app(
                 )
                 error.detail["artifacts"] = artifacts
             raise
+        precondition = None
+        if request.precondition is not None:
+            precondition_matches = find_matches(
+                items, request.precondition.text, "exact", 0.85
+            )
+            precondition = {
+                "found": bool(precondition_matches),
+                "query": request.precondition.text,
+                "state": request.precondition.state,
+            }
+            precondition_selector = {
+                "text": request.precondition.text,
+                "match": "exact",
+                "threshold": 0.85,
+                "occurrence": 0,
+            }
+            precondition_artifacts = (
+                app.state.journal.record(
+                    run_id=request.run_id,
+                    step=request.step,
+                    phase="precondition",
+                    attempt=request.attempt,
+                    action=request.action,
+                    state=request.precondition.state,
+                    image=image,
+                    items=items,
+                    selector=precondition_selector,
+                    candidates=precondition_matches,
+                    found=bool(precondition_matches),
+                    capture_ms=capture_ms,
+                    ocr_ms=ocr_ms,
+                )
+                if journaled
+                else None
+            )
+            precondition_satisfied = (
+                bool(precondition_matches)
+                if request.precondition.state == "visible"
+                else not precondition_matches
+            )
+            if not precondition_satisfied:
+                artifacts = precondition_artifacts or save_failure_artifacts(
+                    app.state.artifacts_dir,
+                    image,
+                    items,
+                    precondition_selector,
+                    precondition_matches,
+                )
+                return {
+                    "found": False,
+                    "query": request.text,
+                    "matches": [],
+                    "detections": [item_json(item) for item in items],
+                    "artifacts": artifacts,
+                    "precondition": precondition,
+                }
         matches = find_matches(items, request.text, request.match, request.threshold)
         log_visual_result(app, request, bool(matches))
         selector = {
@@ -275,6 +352,7 @@ def create_app(
                     "code": "ACTION_TARGET_NOT_FOUND",
                     "reason": reason,
                 },
+                **({"precondition": precondition} if precondition is not None else {}),
             }
 
         spatial_details: dict[str, object] | None = None
@@ -337,6 +415,7 @@ def create_app(
                     "matches": [],
                     "detections": [item_json(item) for item in items],
                     "artifacts": artifacts,
+                    **({"precondition": precondition} if precondition is not None else {}),
                 }
             try:
                 match = select_match(matches, request.occurrence)
@@ -355,6 +434,7 @@ def create_app(
                         "code": "ACTION_TARGET_NOT_FOUND",
                         "message": str(error),
                     },
+                    **({"precondition": precondition} if precondition is not None else {}),
                 }
 
         journal_artifacts = record_journal(True, details=spatial_details)
@@ -384,6 +464,8 @@ def create_app(
                 },
             },
         }
+        if precondition is not None:
+            response["precondition"] = precondition
         if journal_artifacts is not None:
             response["detections"] = [item_json(item) for item in items]
             response["artifacts"] = journal_artifacts

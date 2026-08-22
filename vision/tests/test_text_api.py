@@ -153,6 +153,70 @@ def test_find_returns_deterministic_match_and_percentage_coordinates() -> None:
     }
 
 
+def test_find_evaluates_target_and_precondition_from_one_screenshot() -> None:
+    provider = FakeProvider(
+        [
+            OCRItem("Save", 0.97, BoundingBox(80, 40, 40, 20)),
+            OCRItem("Saved", 0.99, BoundingBox(20, 10, 40, 20)),
+        ]
+    )
+    api, capture = client(provider)
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Save",
+            "precondition": {"text": "Saved", "state": "not-visible"},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["precondition"] == {
+        "found": True,
+        "query": "Saved",
+        "state": "not-visible",
+    }
+    assert capture.devices == ["ABC-123"]
+    assert provider.calls == 1
+
+
+def test_failed_combined_precondition_is_journaled_before_target(
+    tmp_path: Path,
+) -> None:
+    provider = FakeProvider(
+        [
+            OCRItem("Save", 0.97, BoundingBox(80, 40, 40, 20)),
+            OCRItem("Saved", 0.99, BoundingBox(20, 10, 40, 20)),
+        ]
+    )
+    api, capture = client(provider, artifacts_dir=tmp_path)
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Save",
+            "precondition": {"text": "Saved", "state": "not-visible"},
+            "context": "target",
+            "attempt": 1,
+            "runId": "run-combined",
+            "step": 1,
+            "action": 'visionTap "Save"',
+        },
+    )
+
+    assert response.status_code == 200
+    manifest = json.loads((tmp_path / "run-combined" / "manifest.json").read_text())
+    assert [(entry["phase"], entry["state"], entry["found"]) for entry in manifest["entries"]] == [
+        ("precondition", "not-visible", True)
+    ]
+    assert capture.devices == ["ABC-123"]
+    assert provider.calls == 1
+
+
 def test_find_reports_reconstructed_phrase_provenance() -> None:
     provider = FakeProvider(
         [
@@ -416,6 +480,35 @@ def test_capture_and_ocr_failures_have_distinct_codes() -> None:
 
     assert capture_api.post("/v1/text/detect", json=body).json()["detail"]["code"] == "OCR_CAPTURE_FAILED"
     assert ocr_api.post("/v1/text/detect", json=body).json()["detail"]["code"] == "OCR_RUNTIME_FAILED"
+
+
+def test_combined_capture_failure_is_journaled_as_precondition(tmp_path: Path) -> None:
+    api, _capture = client(
+        FakeProvider([]),
+        FakeCapture(CaptureError("simctl failed")),
+        artifacts_dir=tmp_path,
+    )
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Save",
+            "precondition": {"text": "Saved", "state": "not-visible"},
+            "context": "target",
+            "attempt": 1,
+            "runId": "run-capture-failure",
+            "step": 1,
+            "action": 'visionTap "Save"',
+        },
+    )
+
+    assert response.status_code == 502
+    manifest = json.loads((tmp_path / "run-capture-failure" / "manifest.json").read_text())
+    assert manifest["entries"][0]["phase"] == "precondition"
+    assert manifest["entries"][0]["state"] == "not-visible"
+    assert manifest["entries"][0]["error"]["code"] == "OCR_CAPTURE_FAILED"
 
 
 def test_missing_text_saves_actionable_visual_artifacts(tmp_path: Path) -> None:

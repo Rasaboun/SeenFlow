@@ -51,10 +51,59 @@ var payload = {
   attempt: 1,
 };
 if (spatial !== undefined) payload.spatial = spatial;
+var hasPreconditionText = typeof PRECONDITION_TEXT !== "undefined";
+var hasPreconditionState = typeof PRECONDITION_STATE !== "undefined";
+if (hasPreconditionText !== hasPreconditionState) {
+  throw new Error("OCR_RUNTIME_FAILED\nSeenflow received incomplete precondition configuration.");
+}
+if (hasPreconditionText) {
+  if (PRECONDITION_STATE !== "visible" && PRECONDITION_STATE !== "not-visible") {
+    throw new Error("OCR_RUNTIME_FAILED\nSeenflow received invalid precondition state.");
+  }
+  payload.precondition = { text: PRECONDITION_TEXT, state: PRECONDITION_STATE };
+}
 var result = requestFind(payload);
 
 if (!result || typeof result.found !== "boolean") {
   throw new Error("OCR_RUNTIME_FAILED\nSidecar returned an invalid find response.");
+}
+if (hasPreconditionText) {
+  if (
+    !result.precondition ||
+    typeof result.precondition.found !== "boolean" ||
+    result.precondition.query !== PRECONDITION_TEXT ||
+    result.precondition.state !== PRECONDITION_STATE
+  ) {
+    throw new Error("OCR_RUNTIME_FAILED\nSidecar returned an invalid precondition response.");
+  }
+  var preconditionSatisfied = PRECONDITION_STATE === "visible"
+    ? result.precondition.found
+    : !result.precondition.found;
+  if (typeof SEENFLOW_DEBUG !== "undefined" && SEENFLOW_DEBUG === "true") {
+    console.log(
+      "seenflow: precondition text=" + PRECONDITION_TEXT +
+      " expected=" + PRECONDITION_STATE +
+      " found=" + result.precondition.found,
+    );
+  }
+  if (!preconditionSatisfied) {
+    var preconditionDetections = (result.detections || [])
+      .map(function (item) {
+        return '  "' + item.text + '" confidence=' + item.confidence;
+      })
+      .join("\n");
+    var preconditionArtifacts = result.artifacts
+      ? "\nArtifacts:\n  " + Object.keys(result.artifacts).map(function (key) {
+        return result.artifacts[key];
+      }).join("\n  ")
+      : "";
+    throw new Error(
+      "PRECONDITION_FAILED\nAction:\n  " + actionDescription +
+      '\nExpected effect for "' + PRECONDITION_TEXT +
+      '" was already satisfied before action; the action would not prove a transition.\nOCR detected:\n' +
+      (preconditionDetections || "  nothing") + preconditionArtifacts,
+    );
+  }
 }
 if (!result.found) {
   var detected = (result.detections || [])

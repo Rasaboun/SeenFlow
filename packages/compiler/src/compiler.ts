@@ -97,14 +97,7 @@ function compileAction(action: FlowAction, runtimePath: string, step: number): u
   const description = action.spatial
     ? `visionTap ${JSON.stringify(action.text)} ${action.spatial.relation} ${JSON.stringify(action.spatial.anchor.text)}`
     : `visionTap ${JSON.stringify(action.text)}`;
-  return transition(
-    action.expect,
-    visionTap(action, runtimePath, description, step),
-    action.timeout,
-    runtimePath,
-    description,
-    step,
-  );
+  return visionTap(action, runtimePath, description, step);
 }
 
 function visionTap(
@@ -113,6 +106,7 @@ function visionTap(
   description: string,
   step: number,
 ): unknown[] {
+  const state = action.expect.kind === "visibleText" ? "visible" : "not-visible";
   return [
     runScript(runtimePath, "find-text.js", {
       TEXT: action.text,
@@ -120,10 +114,23 @@ function visionTap(
       THRESHOLD: String(action.threshold),
       OCCURRENCE: String(action.occurrence),
       ...(action.spatial ? { SPATIAL: JSON.stringify(action.spatial) } : {}),
+      ...(action.expect.requireTransition
+        ? {
+            PRECONDITION_TEXT: action.expect.text,
+            PRECONDITION_STATE: inverse(state),
+          }
+        : {}),
       ACTION: description,
       STEP: String(step),
     }),
     { tapOn: { point: "${output.seenflow.tapX}%,${output.seenflow.tapY}%" } },
+    runScript(runtimePath, "wait-visual.js", {
+      TEXT: action.expect.text,
+      STATE: state,
+      TIMEOUT: String(action.timeout),
+      ACTION: description,
+      STEP: String(step),
+    }),
   ];
 }
 
