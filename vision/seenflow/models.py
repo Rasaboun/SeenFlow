@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -9,11 +10,18 @@ class BoundingBox:
     height: int
 
 
+OCRSource = Literal["line", "word", "phrase"]
+
+
 @dataclass(frozen=True)
 class OCRItem:
     text: str
     confidence: float
     box: BoundingBox
+    source: OCRSource = "line"
+    line_id: int | None = None
+    span_start: int | None = None
+    span_end: int | None = None
 
 
 @dataclass(frozen=True)

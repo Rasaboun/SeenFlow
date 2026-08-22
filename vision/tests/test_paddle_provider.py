@@ -9,20 +9,25 @@ from seenflow.ocr.paddle import PaddleOCRProvider
 class FakeResult:
     json = {
         "res": {
-            "rec_texts": ["Save", "Loading..."],
-            "rec_scores": [0.97, 0.91],
-            "rec_boxes": [[10, 20, 50, 60], [70, 80, 170, 100]],
+            "rec_texts": ["Chicken Curry Edit"],
+            "rec_scores": [0.97],
+            "rec_boxes": [[10, 20, 190, 60]],
+            "text_word": [["Chicken", "Curry", "Edit"]],
+            "text_word_boxes": [
+                [[10, 20, 75, 60], [80, 20, 125, 60], [150, 20, 190, 60]]
+            ],
         }
     }
 
 
 class FakeEngine:
-    def __init__(self) -> None:
+    def __init__(self, result: type[Any] = FakeResult) -> None:
+        self.result = result
         self.inputs: list[Any] = []
 
     def predict(self, input: Any) -> list[FakeResult]:
         self.inputs.append(input)
-        return [FakeResult()]
+        return [self.result()]
 
 
 def test_paddle_provider_initializes_once_and_converts_results() -> None:
@@ -37,8 +42,18 @@ def test_paddle_provider_initializes_once_and_converts_results() -> None:
     image = Image.new("RGB", (200, 120))
 
     expected = [
-        OCRItem("Save", 0.97, BoundingBox(10, 20, 40, 40)),
-        OCRItem("Loading...", 0.91, BoundingBox(70, 80, 100, 20)),
+        OCRItem(
+            "Chicken Curry Edit",
+            0.97,
+            BoundingBox(10, 20, 180, 40),
+            "line",
+            0,
+            0,
+            3,
+        ),
+        OCRItem("Chicken", 0.97, BoundingBox(10, 20, 65, 40), "word", 0, 0, 1),
+        OCRItem("Curry", 0.97, BoundingBox(80, 20, 45, 40), "word", 0, 1, 2),
+        OCRItem("Edit", 0.97, BoundingBox(150, 20, 40, 40), "word", 0, 2, 3),
     ]
     assert provider.detect(image) == expected
     assert provider.detect(image) == expected
@@ -49,6 +64,7 @@ def test_paddle_provider_initializes_once_and_converts_results() -> None:
             "use_doc_orientation_classify": False,
             "use_doc_unwarping": False,
             "use_textline_orientation": False,
+            "return_word_box": True,
         }
     ]
     assert len(engine.inputs) == 2
@@ -62,6 +78,63 @@ def test_paddle_provider_downscales_large_screens_and_restores_original_boxes() 
 
     assert engine.inputs[0].shape[:2] == (960, 480)
     assert items == [
-        OCRItem("Save", 0.97, BoundingBox(25, 50, 100, 100)),
-        OCRItem("Loading...", 0.91, BoundingBox(175, 200, 250, 50)),
+        OCRItem(
+            "Chicken Curry Edit",
+            0.97,
+            BoundingBox(25, 50, 450, 100),
+            "line",
+            0,
+            0,
+            3,
+        ),
+        OCRItem("Chicken", 0.97, BoundingBox(25, 50, 162, 100), "word", 0, 0, 1),
+        OCRItem("Curry", 0.97, BoundingBox(200, 50, 112, 100), "word", 0, 1, 2),
+        OCRItem("Edit", 0.97, BoundingBox(375, 50, 100, 100), "word", 0, 2, 3),
+    ]
+
+
+def test_paddle_provider_ignores_malformed_word_geometry_for_that_line() -> None:
+    class MalformedResult:
+        json = {
+            "res": {
+                "rec_texts": ["Chicken Curry Edit"],
+                "rec_scores": [0.97],
+                "rec_boxes": [[10, 20, 190, 60]],
+                "text_word": [["Chicken", "Curry", "Edit"]],
+                "text_word_boxes": [[[10, 20, 75, 60]]],
+            }
+        }
+
+    provider = PaddleOCRProvider(lambda **_options: FakeEngine(MalformedResult))
+
+    assert provider.detect(Image.new("RGB", (200, 120))) == [
+        OCRItem(
+            "Chicken Curry Edit",
+            0.97,
+            BoundingBox(10, 20, 180, 40),
+            line_id=0,
+        )
+    ]
+
+
+def test_paddle_provider_omits_whitespace_alignment_boxes() -> None:
+    class WhitespaceResult:
+        json = {
+            "res": {
+                "rec_texts": ["Chicken Curry"],
+                "rec_scores": [0.97],
+                "rec_boxes": [[10, 20, 125, 60]],
+                "text_word": [["Chicken", " ", "Curry"]],
+                "text_word_boxes": [
+                    [[10, 20, 75, 60], [75, 20, 80, 60], [80, 20, 125, 60]]
+                ],
+            }
+        }
+
+    provider = PaddleOCRProvider(lambda **_options: FakeEngine(WhitespaceResult))
+
+    assert provider.detect(Image.new("RGB", (200, 120))) == [
+        OCRItem("Chicken Curry", 0.97, BoundingBox(10, 20, 115, 40), "line", 0, 0, 2),
+        OCRItem("Chicken", 0.97, BoundingBox(10, 20, 65, 40), "word", 0, 0, 1),
+        OCRItem("Curry", 0.97, BoundingBox(80, 20, 45, 40), "word", 0, 1, 2),
     ]

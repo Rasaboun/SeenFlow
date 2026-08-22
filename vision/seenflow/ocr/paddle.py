@@ -24,6 +24,7 @@ class PaddleOCRProvider:
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
+            return_word_box=True,
         )
 
     def detect(self, image: Image) -> list[OCRItem]:
@@ -32,22 +33,76 @@ class PaddleOCRProvider:
         scale_x = image.width / working.width
         scale_y = image.height / working.height
         items: list[OCRItem] = []
+        line_id = 0
         for result in self._engine.predict(input=np.asarray(working)):
             data = result.json["res"]
-            for text, confidence, box in zip(
+            for result_line, (text, confidence, box) in enumerate(zip(
                 data["rec_texts"], data["rec_scores"], data["rec_boxes"], strict=True
-            ):
-                left, top, right, bottom = (float(value) for value in box)
+            )):
+                words, word_boxes = _word_geometry(data, result_line)
                 items.append(
                     OCRItem(
                         text=str(text),
                         confidence=float(confidence),
-                        box=BoundingBox(
-                            round(left * scale_x),
-                            round(top * scale_y),
-                            round((right - left) * scale_x),
-                            round((bottom - top) * scale_y),
-                        ),
+                        box=_scaled_box(box, scale_x, scale_y),
+                        line_id=line_id,
+                        span_start=0 if words is not None else None,
+                        span_end=len(words) if words is not None else None,
                     )
                 )
+                if words is not None and word_boxes is not None:
+                    items.extend(
+                        OCRItem(
+                            text=word,
+                            confidence=float(confidence),
+                            box=_scaled_box(word_box, scale_x, scale_y),
+                            source="word",
+                            line_id=line_id,
+                            span_start=index,
+                            span_end=index + 1,
+                        )
+                        for index, (word, word_box) in enumerate(
+                            zip(words, word_boxes, strict=True)
+                        )
+                    )
+                line_id += 1
         return items
+
+
+def _word_geometry(
+    data: dict[str, Any], line: int
+) -> tuple[list[str] | None, list[Any] | None]:
+    try:
+        words = data["text_word"][line]
+        boxes = data["text_word_boxes"][line]
+        if (
+            isinstance(words, (str, bytes))
+            or isinstance(boxes, (str, bytes))
+            or not words
+            or len(words) != len(boxes)
+        ):
+            return None, None
+        word_pairs = [
+            (str(word).strip(), box)
+            for word, box in zip(words, boxes, strict=True)
+            if str(word).strip()
+        ]
+        if not word_pairs:
+            return None, None
+        for _word, box in word_pairs:
+            if len(box) != 4:
+                return None, None
+            tuple(float(value) for value in box)
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None, None
+    return [word for word, _box in word_pairs], [box for _word, box in word_pairs]
+
+
+def _scaled_box(box: Any, scale_x: float, scale_y: float) -> BoundingBox:
+    left, top, right, bottom = (float(value) for value in box)
+    return BoundingBox(
+        round(left * scale_x),
+        round(top * scale_y),
+        round((right - left) * scale_x),
+        round((bottom - top) * scale_y),
+    )

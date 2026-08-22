@@ -11,8 +11,9 @@ FIXTURE = Path(__file__).parent / "fixtures" / "text-screen.png"
 
 def test_real_ocr_fixture_preserves_boxes_and_visual_order() -> None:
     items = PaddleOCRProvider().detect(Image.open(FIXTURE))
+    lines = [item for item in items if item.source == "line"]
 
-    assert [item.text for item in items] == [
+    assert [item.text for item in lines] == [
         "Save",
         "ADD",
         "Add",
@@ -22,18 +23,18 @@ def test_real_ocr_fixture_preserves_boxes_and_visual_order() -> None:
         "25 min",
         "Welcome",
     ]
-    assert abs(items[0].box.x - 73) <= 10
-    assert abs(items[0].box.y - 78) <= 10
-    assert abs(items[0].box.width - 164) <= 15
-    assert abs(items[0].box.height - 73) <= 15
-    assert items[5].confidence < 0.98
+    assert abs(lines[0].box.x - 73) <= 10
+    assert abs(lines[0].box.y - 78) <= 10
+    assert abs(lines[0].box.width - 164) <= 15
+    assert abs(lines[0].box.height - 73) <= 15
+    assert lines[5].confidence < 0.98
 
-    duplicates = find_matches(items, "add", "exact")
+    duplicates = find_matches(lines, "add", "exact")
     assert [(match.item.text, match.item.box.x) for match in duplicates] == [
-        ("ADD", items[1].box.x),
-        ("Add", items[2].box.x),
+        ("ADD", lines[1].box.x),
+        ("Add", lines[2].box.x),
     ]
-    assert [match.item.text for match in find_matches(items, "  START   COOKING ", "exact")] == [
+    assert [match.item.text for match in find_matches(lines, "  START   COOKING ", "exact")] == [
         "start cooking"
     ]
-    assert find_matches(items, "Chicken Katzu", "fuzzy", 0.85)[0].item.text == "Chicken Katsu"
+    assert find_matches(lines, "Chicken Katzu", "fuzzy", 0.85)[0].item.text == "Chicken Katsu"
