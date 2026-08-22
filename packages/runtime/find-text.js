@@ -29,7 +29,15 @@ function requestFind(payload) {
 }
 
 var actionDescription = typeof ACTION === "undefined" ? 'visionTap "' + TEXT + '"' : ACTION;
-var result = requestFind({
+var spatial;
+if (typeof SPATIAL !== "undefined") {
+  try {
+    spatial = json(SPATIAL);
+  } catch (_error) {
+    throw new Error("OCR_RUNTIME_FAILED\nSeenflow received invalid spatial configuration.");
+  }
+}
+var payload = {
   platform: maestro.platform,
   deviceId: MAESTRO_DEVICE_UDID,
   text: TEXT,
@@ -41,7 +49,9 @@ var result = requestFind({
   step: Number(STEP),
   action: actionDescription,
   attempt: 1,
-});
+};
+if (spatial !== undefined) payload.spatial = spatial;
+var result = requestFind(payload);
 
 if (!result || typeof result.found !== "boolean") {
   throw new Error("OCR_RUNTIME_FAILED\nSidecar returned an invalid find response.");
@@ -62,6 +72,9 @@ if (!result.found) {
         return result.artifacts[key];
       }).join("\n  ")
     : "";
+  var reason = result.error && typeof result.error.reason === "string"
+    ? "\nReason:\n  " + result.error.reason
+    : "";
   throw new Error(
     "ACTION_TARGET_NOT_FOUND\nAction:\n  " +
       actionDescription +
@@ -70,6 +83,7 @@ if (!result.found) {
       '" was not found.\nOCR detected:\n' +
       (detected || "  nothing") +
       (candidates ? "\nMatching candidates:\n" + candidates : "") +
+      reason +
       artifacts,
   );
 }

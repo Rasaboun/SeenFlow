@@ -80,6 +80,56 @@ describe("Maestro runtime bridge", () => {
     });
   });
 
+  test("find-text forwards an optional spatial selector", () => {
+    const { globals, post } = baseGlobals({
+      found: true,
+      match: {
+        text: "Edit",
+        confidence: 0.97,
+        normalized: { x: 75, y: 50 },
+      },
+    });
+    const spatial = {
+      relation: "below",
+      anchor: {
+        text: "Chicken Curry",
+        match: "exact",
+        threshold: 0.85,
+        occurrence: 0,
+      },
+      maxDistance: 20,
+    };
+
+    execute("find-text.js", {
+      ...globals,
+      TEXT: "Edit",
+      MATCH: "exact",
+      THRESHOLD: "0.85",
+      OCCURRENCE: "0",
+      SPATIAL: JSON.stringify(spatial),
+    });
+
+    expect(JSON.parse((post.mock.calls[0]?.[1] as { body: string }).body)).toMatchObject({
+      text: "Edit",
+      spatial,
+    });
+  });
+
+  test("find-text rejects malformed spatial configuration", () => {
+    const { globals } = baseGlobals({ found: false });
+
+    expect(() =>
+      execute("find-text.js", {
+        ...globals,
+        TEXT: "Edit",
+        MATCH: "exact",
+        THRESHOLD: "0.85",
+        OCCURRENCE: "0",
+        SPATIAL: "{",
+      }),
+    ).toThrowError(/OCR_RUNTIME_FAILED[\s\S]*invalid spatial configuration/);
+  });
+
   test("find-text exposes an actionable target failure", () => {
     const { globals } = baseGlobals({
       found: false,
@@ -100,6 +150,27 @@ describe("Maestro runtime bridge", () => {
     ).toThrowError(
       /ACTION_TARGET_NOT_FOUND[\s\S]*Save[\s\S]*START COOKlNG[\s\S]*annotated\.png/,
     );
+  });
+
+  test("find-text exposes spatial rejection reasons", () => {
+    const { globals } = baseGlobals({
+      found: false,
+      query: "Edit",
+      matches: [{ text: "Edit", confidence: 0.9, score: 1 }],
+      detections: [{ text: "Chicken Curry", confidence: 0.99 }],
+      error: { code: "ACTION_TARGET_NOT_FOUND", reason: "DIRECTION_MISMATCH" },
+      artifacts: { annotated: ".seenflow/artifacts/run/annotated.png" },
+    });
+
+    expect(() =>
+      execute("find-text.js", {
+        ...globals,
+        TEXT: "Edit",
+        MATCH: "exact",
+        THRESHOLD: "0.85",
+        OCCURRENCE: "0",
+      }),
+    ).toThrowError(/ACTION_TARGET_NOT_FOUND[\s\S]*DIRECTION_MISMATCH[\s\S]*annotated\.png/);
   });
 
   test("find-text treats a missing occurrence as an action target failure", () => {
