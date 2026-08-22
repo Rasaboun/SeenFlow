@@ -5,6 +5,11 @@ function throwSidecarError(response) {
     var body = json(response.body);
     if (body.detail && body.detail.code === "OCR_CAPTURE_FAILED") code = body.detail.code;
     if (body.detail && typeof body.detail.message === "string") message = body.detail.message;
+    if (body.detail && body.detail.artifacts) {
+      message += "\nArtifacts:\n  " + Object.keys(body.detail.artifacts).map(function (key) {
+        return body.detail.artifacts[key];
+      }).join("\n  ");
+    }
   } catch (_error) {}
   throw new Error(code + "\nSidecar returned HTTP " + response.status + ".\n" + message);
 }

@@ -322,6 +322,37 @@ describe("Maestro runtime bridge", () => {
     },
   );
 
+  test.each(["assert-visual.js", "find-text.js", "wait-visual.js"])(
+    "%s preserves OCR runtime artifact paths",
+    (file) => {
+      const { globals, post } = baseGlobals(null);
+      post.mockReturnValue({
+        ok: false,
+        status: 500,
+        body: JSON.stringify({
+          detail: {
+            code: "OCR_RUNTIME_FAILED",
+            message: "model failed",
+            artifacts: { screenshot: ".seenflow/artifacts/run-123/001-target-001/screenshot.png" },
+          },
+        }),
+      });
+
+      expect(() =>
+        execute(file, {
+          ...globals,
+          ACTION: 'visionTap "Save"',
+          TEXT: "Save",
+          MATCH: "exact",
+          THRESHOLD: "0.85",
+          OCCURRENCE: "0",
+          STATE: "visible",
+          TIMEOUT: "500",
+        }),
+      ).toThrowError(/OCR_RUNTIME_FAILED[\s\S]*model failed[\s\S]*screenshot\.png/);
+    },
+  );
+
   test.each([
     [{ found: "yes" }, "invalid find response"],
     [

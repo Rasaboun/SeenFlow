@@ -156,6 +156,35 @@ def test_missing_occurrence_returns_all_candidates_and_artifacts(tmp_path: Path)
     assert Path(response.json()["artifacts"]["annotated"]).is_file()
 
 
+def test_journal_records_missing_occurrence_as_not_found(tmp_path: Path) -> None:
+    provider = FakeProvider(
+        [
+            OCRItem("Add", 0.9, BoundingBox(10, 10, 30, 20)),
+            OCRItem("Add", 0.8, BoundingBox(60, 10, 30, 20)),
+        ]
+    )
+    api, _capture = client(provider, artifacts_dir=tmp_path)
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Add",
+            "occurrence": 2,
+            "context": "target",
+            "attempt": 1,
+            "runId": "run-occurrence",
+            "step": 1,
+            "action": 'visionTap "Add"',
+        },
+    )
+
+    assert response.json()["found"] is False
+    manifest = json.loads((tmp_path / "run-occurrence" / "manifest.json").read_text())
+    assert manifest["entries"][0]["found"] is False
+
+
 @pytest.mark.parametrize(
     "body",
     [
@@ -236,6 +265,148 @@ def test_found_text_can_request_failure_diagnostics(tmp_path: Path) -> None:
     assert response.json()["found"] is True
     assert response.json()["detections"][0]["text"] == "Loading..."
     assert Path(response.json()["artifacts"]["screenshot"]).is_file()
+
+
+def test_precondition_mismatch_returns_exact_journal_artifacts(tmp_path: Path) -> None:
+    provider = FakeProvider([OCRItem("Saved", 0.99, BoundingBox(20, 20, 80, 20))])
+    api, capture = client(provider, artifacts_dir=tmp_path)
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Saved",
+            "context": "precondition",
+            "state": "not-visible",
+            "attempt": 1,
+            "runId": "run-123",
+            "step": 2,
+            "action": 'visionTap "Save"',
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["found"] is True
+    assert Path(response.json()["artifacts"]["annotated"]).is_file()
+    assert capture.devices == ["ABC-123"]
+    manifest = json.loads((tmp_path / "run-123" / "manifest.json").read_text())
+    assert manifest["entries"][0]["phase"] == "precondition"
+    assert manifest["entries"][0]["found"] is True
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"runId": "run-only"},
+        {"runId": "../escape", "step": 1, "action": "swipe"},
+        {"runId": "run", "step": 0, "action": "swipe"},
+        {"runId": "run", "step": 1, "action": " "},
+    ],
+)
+def test_journal_metadata_is_strictly_validated(metadata: dict[str, object]) -> None:
+    api, _capture = client(FakeProvider([]))
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Saved",
+            "context": "precondition",
+            "state": "not-visible",
+            "attempt": 1,
+            **metadata,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_ocr_failure_retains_source_screenshot_in_journal(tmp_path: Path) -> None:
+    api, _capture = client(
+        FakeProvider([], RuntimeError("model failed")),
+        artifacts_dir=tmp_path,
+    )
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Save",
+            "context": "target",
+            "attempt": 1,
+            "runId": "run-ocr",
+            "step": 1,
+            "action": 'visionTap "Save"',
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "OCR_RUNTIME_FAILED"
+    screenshot = response.json()["detail"]["artifacts"]["screenshot"]
+    assert Path(screenshot).is_file()
+
+
+def test_capture_failure_writes_manifest_without_promising_an_image(tmp_path: Path) -> None:
+    api, _capture = client(
+        FakeProvider([]),
+        FakeCapture(CaptureError("simctl failed")),
+        artifacts_dir=tmp_path,
+    )
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Save",
+            "context": "target",
+            "attempt": 1,
+            "runId": "run-capture",
+            "step": 1,
+            "action": 'visionTap "Save"',
+        },
+    )
+
+    assert response.status_code == 502
+    assert "artifacts" not in response.json()["detail"]
+    manifest = json.loads((tmp_path / "run-capture" / "manifest.json").read_text())
+    assert manifest["entries"][0]["error"]["code"] == "OCR_CAPTURE_FAILED"
+
+
+def test_final_diagnostic_uses_last_validated_run_device_context(tmp_path: Path) -> None:
+    provider = FakeProvider([OCRItem("Save", 0.97, BoundingBox(80, 40, 40, 20))])
+    api, capture = client(provider, artifacts_dir=tmp_path)
+    find = {
+        "platform": "android",
+        "deviceId": "emulator-5554",
+        "text": "Save",
+        "context": "target",
+        "attempt": 1,
+        "runId": "run-final",
+        "step": 3,
+        "action": 'visionTap "Save"',
+    }
+
+    assert api.post("/v1/text/find", json=find).status_code == 200
+    response = api.post("/v1/diagnostics/final", json={"runId": "run-final"})
+
+    assert response.status_code == 200
+    assert Path(response.json()["artifacts"]["annotated"]).is_file()
+    assert capture.devices == ["emulator-5554", "emulator-5554"]
+    manifest = json.loads((tmp_path / "run-final" / "manifest.json").read_text())
+    assert [entry["phase"] for entry in manifest["entries"]] == [
+        "target",
+        "execution-failure",
+    ]
+
+
+def test_final_diagnostic_rejects_unknown_run_context() -> None:
+    api, _capture = client(FakeProvider([]))
+
+    assert api.post("/v1/diagnostics/final", json={"runId": "missing"}).status_code == 404
 
 
 def test_request_body_size_is_limited() -> None:

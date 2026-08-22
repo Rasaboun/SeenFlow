@@ -11,12 +11,13 @@ import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from seenflow.capture.android import AndroidCapture
 from seenflow.capture.base import CaptureError, ScreenshotCapture
 from seenflow.capture.ios import IOSSimulatorCapture
 from seenflow.diagnostics import save_failure_artifacts
+from seenflow.journal import VisualJournal
 from seenflow.matching import MatchSelectionError, find_matches, select_match
 from seenflow.models import BoundingBox, OCRItem
 from seenflow.ocr.paddle import PaddleOCRProvider
@@ -43,6 +44,13 @@ class FindRequest(DetectRequest):
     context: Literal["target", "precondition", "postcondition"] | None = None
     state: Literal["visible", "not-visible"] | None = None
     attempt: int | None = Field(default=None, ge=1)
+    run_id: str | None = Field(
+        default=None,
+        alias="runId",
+        pattern=r"^[A-Za-z0-9_-]{1,64}$",
+    )
+    step: int | None = Field(default=None, ge=1)
+    action: str | None = Field(default=None, min_length=1, max_length=512)
 
     @field_validator("text")
     @classmethod
@@ -50,6 +58,30 @@ class FindRequest(DetectRequest):
         if not value.strip():
             raise ValueError("text must not be blank")
         return value
+
+    @field_validator("action")
+    @classmethod
+    def reject_blank_action(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("action must not be blank")
+        return value
+
+    @model_validator(mode="after")
+    def require_complete_journal_context(self) -> "FindRequest":
+        values = (self.run_id, self.step, self.action)
+        if any(value is not None for value in values) and not all(
+            value is not None for value in values
+        ):
+            raise ValueError("runId, step, and action must be provided together")
+        if self.run_id is not None and (self.context is None or self.attempt is None):
+            raise ValueError("journaled requests require context and attempt")
+        return self
+
+
+class FinalDiagnosticRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    run_id: str = Field(alias="runId", pattern=r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def create_app(
@@ -85,6 +117,7 @@ def create_app(
         "android": AndroidCapture(),
     }
     app.state.artifacts_dir = artifacts_dir or Path(".seenflow/artifacts")
+    app.state.journal = VisualJournal(app.state.artifacts_dir)
     app.state.debug = debug
 
     @app.middleware("http")
@@ -110,7 +143,48 @@ def create_app(
 
     @app.post("/v1/text/find")
     async def find(request: FindRequest) -> dict[str, object]:
-        image, items = analyze(app, request.platform, request.device_id)
+        journaled = request.run_id is not None
+        if journaled:
+            app.state.journal.remember_context(
+                request.run_id,
+                request.platform,
+                request.device_id,
+                request.step,
+                request.action,
+            )
+        try:
+            image, capture_ms = capture_image(app, request.platform, request.device_id)
+        except HTTPException as error:
+            if journaled:
+                app.state.journal.record_error(
+                    run_id=request.run_id,
+                    step=request.step,
+                    phase=request.context,
+                    attempt=request.attempt,
+                    action=request.action,
+                    state=request.state,
+                    code="OCR_CAPTURE_FAILED",
+                    message=str(error.detail["message"]),
+                )
+            raise
+        try:
+            items, ocr_ms = detect_items(app, image)
+        except HTTPException as error:
+            if journaled:
+                artifacts = app.state.journal.record_error(
+                    run_id=request.run_id,
+                    step=request.step,
+                    phase=request.context,
+                    attempt=request.attempt,
+                    action=request.action,
+                    state=request.state,
+                    code="OCR_RUNTIME_FAILED",
+                    message=str(error.detail["message"]),
+                    image=image,
+                    capture_ms=capture_ms,
+                )
+                error.detail["artifacts"] = artifacts
+            raise
         matches = find_matches(items, request.text, request.match, request.threshold)
         log_visual_result(app, request, bool(matches))
         selector = {
@@ -119,8 +193,28 @@ def create_app(
             "threshold": request.threshold,
             "occurrence": request.occurrence,
         }
+        def record_journal(found: bool) -> dict[str, str] | None:
+            if not journaled:
+                return None
+            return app.state.journal.record(
+                run_id=request.run_id,
+                step=request.step,
+                phase=request.context,
+                attempt=request.attempt,
+                action=request.action,
+                state=request.state,
+                image=image,
+                items=items,
+                selector=selector,
+                candidates=matches,
+                found=found,
+                capture_ms=capture_ms,
+                ocr_ms=ocr_ms,
+            )
+
         if not matches and request.occurrence == 0:
-            artifacts = save_failure_artifacts(
+            journal_artifacts = record_journal(False)
+            artifacts = journal_artifacts or save_failure_artifacts(
                 app.state.artifacts_dir, image, items, selector, matches
             )
             return {
@@ -133,7 +227,8 @@ def create_app(
         try:
             match = select_match(matches, request.occurrence)
         except MatchSelectionError as error:
-            artifacts = save_failure_artifacts(
+            journal_artifacts = record_journal(False)
+            artifacts = journal_artifacts or save_failure_artifacts(
                 app.state.artifacts_dir, image, items, selector, error.matches
             )
             return {
@@ -150,6 +245,8 @@ def create_app(
                     "message": str(error),
                 },
             }
+
+        journal_artifacts = record_journal(True)
 
         box = match.item.box
         center_x = box.x + box.width / 2
@@ -176,12 +273,42 @@ def create_app(
                 },
             },
         }
-        if request.diagnostics:
+        if journal_artifacts is not None:
+            response["detections"] = [item_json(item) for item in items]
+            response["artifacts"] = journal_artifacts
+        elif request.diagnostics:
             response["detections"] = [item_json(item) for item in items]
             response["artifacts"] = save_failure_artifacts(
                 app.state.artifacts_dir, image, items, selector, matches
             )
         return response
+
+    @app.post("/v1/diagnostics/final")
+    async def final_diagnostic(request: FinalDiagnosticRequest) -> dict[str, object]:
+        context = app.state.journal.context(request.run_id)
+        if context is None:
+            raise HTTPException(status_code=404, detail="No device context for run")
+        try:
+            image, capture_ms = capture_image(app, context.platform, context.device_id)
+            items, ocr_ms = detect_items(app, image)
+        except HTTPException:
+            raise
+        artifacts = app.state.journal.record(
+            run_id=request.run_id,
+            step=context.step,
+            phase="execution-failure",
+            attempt=1,
+            action=context.action,
+            state=None,
+            image=image,
+            items=items,
+            selector={},
+            candidates=[],
+            found=False,
+            capture_ms=capture_ms,
+            ocr_ms=ocr_ms,
+        )
+        return {"artifacts": artifacts}
 
     return app
 
@@ -199,7 +326,7 @@ def log_visual_result(app: FastAPI, request: FindRequest, found: bool) -> None:
     )
 
 
-def analyze(app: FastAPI, platform: str, device_id: str) -> tuple[Image.Image, list[OCRItem]]:
+def capture_image(app: FastAPI, platform: str, device_id: str) -> tuple[Image.Image, float]:
     capture_started = time.perf_counter()
     try:
         screenshot = app.state.captures[platform].capture(device_id)
@@ -212,6 +339,10 @@ def analyze(app: FastAPI, platform: str, device_id: str) -> tuple[Image.Image, l
         ) from error
     if app.state.debug:
         print(f"seenflow: capture duration={(time.perf_counter() - capture_started) * 1000:.1f}ms")
+    return image, (time.perf_counter() - capture_started) * 1000
+
+
+def detect_items(app: FastAPI, image: Image.Image) -> tuple[list[OCRItem], float]:
     ocr_started = time.perf_counter()
     try:
         items = app.state.ocr_provider.detect(image)
@@ -222,6 +353,12 @@ def analyze(app: FastAPI, platform: str, device_id: str) -> tuple[Image.Image, l
         ) from error
     if app.state.debug:
         print(f"seenflow: OCR duration={(time.perf_counter() - ocr_started) * 1000:.1f}ms")
+    return items, (time.perf_counter() - ocr_started) * 1000
+
+
+def analyze(app: FastAPI, platform: str, device_id: str) -> tuple[Image.Image, list[OCRItem]]:
+    image, _capture_ms = capture_image(app, platform, device_id)
+    items, _ocr_ms = detect_items(app, image)
     return image, items
 
 

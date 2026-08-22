@@ -15,6 +15,16 @@ def save_failure_artifacts(
     candidates: list[OCRMatch],
 ) -> dict[str, str]:
     directory = root / datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
+    return save_visual_artifacts(directory, image, items, selector, candidates)
+
+
+def save_visual_artifacts(
+    directory: Path,
+    image: Image.Image,
+    items: list[OCRItem],
+    selector: dict[str, object],
+    candidates: list[OCRMatch],
+) -> dict[str, str]:
     directory.mkdir(parents=True, exist_ok=True)
     screenshot = directory / "screenshot.png"
     annotated = directory / "annotated.png"
