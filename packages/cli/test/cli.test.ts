@@ -43,7 +43,7 @@ describe("CLI", () => {
     );
 
     expect(manifest.bin).toEqual({ seenflow: "packages/cli/src/index.ts" });
-    expect(manifest.version).toBe("0.3.0");
+    expect(manifest.version).toBe("0.4.0");
   });
 
   test("parses supported compile and test flags", () => {

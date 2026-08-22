@@ -43,7 +43,7 @@ If `Saved` is visible before the tap, the flow fails before the action. Use `req
 - Bun;
 - Python 3.11+ and `uv`.
 
-Physical iOS devices and Maestro Cloud are not supported in v0.3.
+Physical iOS devices and Maestro Cloud are not supported in v0.4.
 
 ## Install from source
 
@@ -127,6 +127,10 @@ Spatial `visionTap` supports exactly one of `near`, `above`, `below`, `leftOf`, 
 
 Directional relationships use a 90-degree cone so `rightOf`, for example, rejects candidates that are mostly above or below the anchor. Valid targets are ranked by distance, match score, OCR confidence, then screen order before the target occurrence is applied. Anchor and target resolution use the same fresh screenshot and OCR result.
 
+PP-OCRv6 may recognize nearby labels as one text line. v0.4 requests Paddle's native word boxes, reconstructs consecutive multi-word phrases from the recognized line, and prefers the smallest matching word or phrase geometry without changing the YAML. For example, one OCR line containing `Chicken Curry Edit` can resolve `Chicken Curry` as the spatial anchor and `Edit` as the tap target. Debug responses and artifacts identify whether the selected geometry came from a line, word, or reconstructed phrase.
+
+Word refinement uses the same screenshot and Paddle inference as the original lookup. Seenflow does not estimate substring coordinates from character widths; malformed or unavailable native word geometry falls back to the original line evidence with a diagnostic reason.
+
 Effects are screenshot-based OCR assertions. They support exactly one of `visibleText` or `notVisibleText`. Matching Unicode-normalizes, trims, collapses whitespace, and case-folds without globally removing punctuation.
 
 ## Failure artifacts and debugging
@@ -176,14 +180,14 @@ Both fixture apps draw their labels directly into pixels and hide accessibility 
 
 ## Scope
 
-v0.3 deliberately excludes spatial expected effects, combined spatial relationships, arbitrary regions, OCR line grouping, VLMs/LLMs, image or icon selectors, template matching, video generation, visual regression, Appium, custom gesture implementations, parallel stability runs, physical iOS devices, Maestro Cloud, and changes to Maestro itself. Screenshot capture is the only device operation owned by the sidecar.
+v0.4 deliberately excludes spatial expected effects, combined spatial relationships, arbitrary regions, custom image segmentation, second-pass OCR refinement, OCR model switching, VLMs/LLMs, image or icon selectors, template matching, video generation, visual regression, Appium, custom gesture implementations, parallel stability runs, physical iOS devices, Maestro Cloud, and changes to Maestro itself. Screenshot capture is the only device operation owned by the sidecar.
 
 ## Development
 
 ```bash
 bun run test
 bun run typecheck
-UV_CACHE_DIR=.seenflow/uv-cache uv run --project vision pytest
+UV_CACHE_DIR=.seenflow/uv-cache uv run --project vision --extra test pytest
 ```
 
 Licensed under the MIT License.

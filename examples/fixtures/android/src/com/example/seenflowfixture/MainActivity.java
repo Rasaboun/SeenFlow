@@ -44,7 +44,7 @@ public final class MainActivity extends Activity {
         }
 
         private RectF spatialButton(float centerY) {
-            float centerX = getWidth() * 0.75f;
+            float centerX = getWidth() * 0.70f;
             return new RectF(centerX - 140, centerY - 80, centerX + 140, centerY + 80);
         }
 
@@ -58,10 +58,10 @@ public final class MainActivity extends Activity {
                 }
                 float firstRow = getHeight() / 2f - 260;
                 float secondRow = getHeight() / 2f + 260;
-                drawTextAt(canvas, "Chicken Curry", getWidth() * 0.32f, firstRow, Color.BLACK, 52);
-                drawTextAt(canvas, "Edit", getWidth() * 0.75f, firstRow, Color.rgb(10, 132, 255), 52);
-                drawTextAt(canvas, "Pasta", getWidth() * 0.32f, secondRow, Color.BLACK, 52);
-                drawTextAt(canvas, "Edit", getWidth() * 0.75f, secondRow, Color.rgb(10, 132, 255), 52);
+                drawTextAt(canvas, "Chicken Curry", getWidth() * 0.36f, firstRow, Color.BLACK, 52);
+                drawTextAt(canvas, "Edit", getWidth() * 0.70f, firstRow, Color.rgb(10, 132, 255), 52);
+                drawTextAt(canvas, "Pasta", getWidth() * 0.36f, secondRow, Color.BLACK, 52);
+                drawTextAt(canvas, "Edit", getWidth() * 0.70f, secondRow, Color.rgb(10, 132, 255), 52);
                 return;
             }
             if (swipeMode) {
