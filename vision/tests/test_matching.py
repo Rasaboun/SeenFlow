@@ -18,6 +18,23 @@ def centered(text: str, confidence: float, x: int, y: int) -> OCRItem:
     return OCRItem(text, confidence, BoundingBox(x - 5, y - 5, 10, 10))
 
 
+def merged_row() -> list[OCRItem]:
+    return [
+        OCRItem(
+            "Chicken Curry Edit",
+            0.97,
+            BoundingBox(10, 20, 180, 40),
+            "line",
+            0,
+            0,
+            3,
+        ),
+        OCRItem("Chicken", 0.97, BoundingBox(10, 20, 65, 40), "word", 0, 0, 1),
+        OCRItem("Curry", 0.97, BoundingBox(80, 20, 45, 40), "word", 0, 1, 2),
+        OCRItem("Edit", 0.97, BoundingBox(150, 20, 40, 40), "word", 0, 2, 3),
+    ]
+
+
 def test_normalization_handles_unicode_case_and_whitespace_but_keeps_punctuation() -> None:
     assert normalize_text("  ＳＴＡＲＴ   Cooking \n") == "start cooking"
     assert normalize_text("Save!") != normalize_text("Save")
@@ -56,6 +73,60 @@ def test_duplicate_exact_text_uses_screen_order_not_confidence() -> None:
 
     assert [(match.item.box.x, match.item.box.y) for match in matches] == [(10, 20), (30, 20), (200, 100)]
     assert select_match(matches, 1).item.box.x == 30
+
+
+def test_exact_match_reconstructs_a_phrase_from_adjacent_words() -> None:
+    matches = find_matches(merged_row(), "Chicken Curry", "exact")
+
+    assert [(match.item.text, match.item.source, match.item.box) for match in matches] == [
+        ("Chicken Curry", "phrase", BoundingBox(10, 20, 115, 40))
+    ]
+
+
+def test_precise_word_suppresses_overlapping_line_and_phrase_matches() -> None:
+    matches = find_matches(merged_row(), "Edit", "contains")
+
+    assert [(match.item.source, match.item.box.x) for match in matches] == [("word", 150)]
+
+
+def test_phrase_reconstruction_never_crosses_ocr_lines() -> None:
+    items = [
+        OCRItem("Chicken", 0.97, BoundingBox(10, 20, 65, 40), "line", 0, 0, 1),
+        OCRItem("Chicken", 0.97, BoundingBox(10, 20, 65, 40), "word", 0, 0, 1),
+        OCRItem("Curry", 0.97, BoundingBox(10, 80, 45, 40), "line", 1, 0, 1),
+        OCRItem("Curry", 0.97, BoundingBox(10, 80, 45, 40), "word", 1, 0, 1),
+    ]
+
+    assert find_matches(items, "Chicken Curry", "exact") == []
+
+
+def test_duplicate_words_remain_separate_visual_occurrences() -> None:
+    items = [
+        OCRItem("Edit Edit", 0.97, BoundingBox(10, 20, 100, 40), "line", 0, 0, 2),
+        OCRItem("Edit", 0.97, BoundingBox(10, 20, 40, 40), "word", 0, 0, 1),
+        OCRItem("Edit", 0.97, BoundingBox(70, 20, 40, 40), "word", 0, 1, 2),
+    ]
+
+    matches = find_matches(items, "Edit", "contains")
+
+    assert [(match.item.source, match.item.box.x) for match in matches] == [
+        ("word", 10),
+        ("word", 70),
+    ]
+
+
+def test_phrase_text_preserves_the_parent_lines_real_separators() -> None:
+    items = [
+        OCRItem("保存设置", 0.97, BoundingBox(10, 20, 100, 40), "line", 0, 0, 2),
+        OCRItem("保存", 0.97, BoundingBox(10, 20, 45, 40), "word", 0, 0, 1),
+        OCRItem("设置", 0.97, BoundingBox(65, 20, 45, 40), "word", 0, 1, 2),
+    ]
+
+    matches = find_matches(items, "保存设置", "exact")
+
+    assert [(match.item.text, match.item.source) for match in matches] == [
+        ("保存设置", "phrase")
+    ]
 
 
 def test_missing_occurrence_lists_every_candidate() -> None:
