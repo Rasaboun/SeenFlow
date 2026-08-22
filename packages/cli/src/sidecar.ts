@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 export interface SidecarHandle {
   url: string;
   token: string;
+  captureFinal(runId: string): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -48,7 +49,32 @@ export async function startSidecar(options: SidecarOptions = {}): Promise<Sideca
     await stop();
     throw error;
   }
-  return { url, token, stop };
+  return {
+    url,
+    token,
+    captureFinal: (runId) => captureFinalDiagnostic(url, token, runId),
+    stop,
+  };
+}
+
+export async function captureFinalDiagnostic(
+  url: string,
+  token: string,
+  runId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  const response = await fetcher(`${url}/v1/diagnostics/final`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ runId }),
+  });
+  if (response.status === 404) return;
+  if (!response.ok) {
+    throw new Error(`Final diagnostic request failed with HTTP ${response.status}`);
+  }
 }
 
 async function availablePort(): Promise<number> {
