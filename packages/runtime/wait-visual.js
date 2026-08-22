@@ -1,20 +1,33 @@
-function findVisualText() {
-  var response = http.post(MAESTRO_VISION_URL + "/v1/text/find", {
+function throwSidecarError(response) {
+  var code = "OCR_RUNTIME_FAILED";
+  var message = response.body;
+  try {
+    var body = json(response.body);
+    if (body.detail && body.detail.code === "OCR_CAPTURE_FAILED") code = body.detail.code;
+    if (body.detail && typeof body.detail.message === "string") message = body.detail.message;
+  } catch (_error) {}
+  throw new Error(code + "\nSidecar returned HTTP " + response.status + ".\n" + message);
+}
+
+function findVisualText(diagnostics) {
+  var payload = {
+    platform: maestro.platform,
+    deviceId: MAESTRO_DEVICE_UDID,
+    text: TEXT,
+    match: "exact",
+    threshold: 0.85,
+    occurrence: 0,
+  };
+  if (diagnostics) payload.diagnostics = true;
+  var response = http.post(SEENFLOW_URL + "/v1/text/find", {
     headers: {
-      Authorization: "Bearer " + MAESTRO_VISION_TOKEN,
+      Authorization: "Bearer " + SEENFLOW_TOKEN,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      platform: maestro.platform,
-      deviceId: MAESTRO_DEVICE_UDID,
-      text: TEXT,
-      match: "exact",
-      threshold: 0.85,
-      occurrence: 0,
-    }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("OCR_RUNTIME_FAILED\nSidecar returned HTTP " + response.status + ".\n" + response.body);
+    throwSidecarError(response);
   }
   var body = json(response.body);
   if (typeof body.found !== "boolean") {
@@ -28,15 +41,17 @@ function pause(milliseconds) {
   while (Date.now() < until) {}
 }
 
+var actionDescription = typeof ACTION === "undefined" ? "supported action" : ACTION;
 var timeout = Number(TIMEOUT);
 var deadline = Date.now() + timeout;
 var attempts = 0;
 var lastResult;
 while (true) {
   attempts += 1;
-  lastResult = findVisualText();
+  lastResult = findVisualText(false);
   if (STATE === "visible" ? lastResult.found : !lastResult.found) break;
   if (Date.now() >= deadline) {
+    if (!lastResult.artifacts) lastResult = findVisualText(true);
     var detected = (lastResult.detections || [])
       .map(function (item) {
         return '  "' + item.text + '" confidence=' + item.confidence;
@@ -48,13 +63,17 @@ while (true) {
         }).join("\n  ")
       : "";
     throw new Error(
-      'POSTCONDITION_TIMEOUT\nExpected "' +
+      "POSTCONDITION_TIMEOUT\nAction:\n  " +
+        actionDescription +
+        '\nExpected "' +
         TEXT +
         '" to become ' +
         STATE +
         ".\nTimeout: " +
         timeout +
-        "ms\nLast OCR detections:\n" +
+        "ms\nAttempts: " +
+        attempts +
+        "\nLast OCR detections:\n" +
         (detected || "  nothing") +
         artifacts,
     );
@@ -62,6 +81,6 @@ while (true) {
   pause(250);
 }
 
-if (typeof MAESTRO_VISION_DEBUG !== "undefined" && MAESTRO_VISION_DEBUG === "true") {
-  console.log("maestro-vision: postcondition satisfied after " + attempts + " OCR attempt(s)");
+if (typeof SEENFLOW_DEBUG !== "undefined" && SEENFLOW_DEBUG === "true") {
+  console.log("seenflow: postcondition satisfied after " + attempts + " OCR attempt(s)");
 }

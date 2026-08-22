@@ -1,13 +1,23 @@
 {
-  "name": "maestro-vision",
-  "private": true,
+  "name": "seenflow",
+  "version": "0.1.0",
+  "description": "Deterministic visual selectors and action-effect assertions for Maestro",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "seenflow": "packages/cli/src/index.ts"
+  },
   "packageManager": "bun@1.4.0",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
+    "seenflow": "bun packages/cli/src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p packages/compiler/tsconfig.json && tsc --noEmit -p packages/cli/tsconfig.json"
+  },
+  "dependencies": {
+    "yaml": "^2.8.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

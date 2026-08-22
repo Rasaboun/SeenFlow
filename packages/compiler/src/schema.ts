@@ -8,8 +8,8 @@ const effectKeys = ["visibleText", "notVisibleText"] as const;
 export function effectsRequired(config: unknown): boolean {
   return !(
     isRecord(config) &&
-    isRecord(config.maestroVision) &&
-    config.maestroVision.requireEffects === false
+    isRecord(config.seenflow) &&
+    config.seenflow.requireEffects === false
   );
 }
 
@@ -23,6 +23,12 @@ export function parseVisionTap(command: ParsedCommand): VisionTapAction {
   }
 
   const input = command.value.visionTap;
+  if (!Object.hasOwn(input, "expect")) {
+    failAt(
+      command.location,
+      'visionTap requires an expected effect.\n\nExample:\n\n  expect:\n    visibleText: "Saved"',
+    );
+  }
   return {
     kind: "visionTap",
     location: command.location,

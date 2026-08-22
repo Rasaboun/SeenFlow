@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from maestro_vision.models import OCRItem, OCRMatch
+from seenflow.models import OCRItem, OCRMatch
 
 
 def save_failure_artifacts(

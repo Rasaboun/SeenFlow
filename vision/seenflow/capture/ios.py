@@ -10,7 +10,7 @@ class IOSSimulatorCapture:
 
     def capture(self, device_id: str) -> bytes:
         udid = validate_device_id(device_id)
-        with TemporaryDirectory(prefix="maestro-vision-") as directory:
+        with TemporaryDirectory(prefix="seenflow-") as directory:
             output = Path(directory) / "screenshot.png"
             self._runner.run(
                 ["xcrun", "simctl", "io", udid, "screenshot", "--type=png", str(output)]

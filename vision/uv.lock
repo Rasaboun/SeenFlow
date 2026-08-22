@@ -843,7 +843,7 @@ wheels = [
 ]
 
 [[package]]
-name = "maestro-vision-sidecar"
+name = "seenflow-sidecar"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

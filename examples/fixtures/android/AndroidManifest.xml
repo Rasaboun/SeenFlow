@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.maestrovisionfixture">
+    package="com.example.seenflowfixture">
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="34" />
-    <application android:theme="@style/AppTheme" android:label="Maestro Vision Fixture">
+    <application android:theme="@style/AppTheme" android:label="Seenflow Fixture">
         <activity
             android:name=".MainActivity"
             android:screenOrientation="portrait"

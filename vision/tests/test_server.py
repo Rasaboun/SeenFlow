@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from maestro_vision.server import HOST, create_app
+from seenflow.server import HOST, create_app
 
 
 TOKEN = "test-session-token"

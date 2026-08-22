@@ -22,15 +22,15 @@ export async function compileFile(
 ): Promise<CompileFileResult> {
   const cwd = options.cwd ?? process.cwd();
   const sourcePath = resolve(cwd, flow);
-  const defaultOutput = join(cwd, ".maestro-vision", "generated", basename(flow));
+  const defaultOutput = join(cwd, ".seenflow", "generated", basename(flow));
   const output = options.output
     ? isAbsolute(options.output)
       ? options.output
       : resolve(cwd, options.output)
     : defaultOutput;
   const runtimeDirectory = options.output
-    ? join(dirname(output), ".maestro-vision", "runtime")
-    : join(cwd, ".maestro-vision", "runtime");
+    ? join(dirname(output), ".seenflow", "runtime")
+    : join(cwd, ".seenflow", "runtime");
   const runtimePath = relative(dirname(output), runtimeDirectory).split(sep).join("/") || ".";
   const result = compileFlow(await readFile(sourcePath, "utf8"), sourcePath, { runtimePath });
 

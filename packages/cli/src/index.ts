@@ -11,7 +11,7 @@ export type CliArgs =
 export function parseArgs(args: string[]): CliArgs {
   const [command, flow, ...flags] = args;
   if ((command !== "compile" && command !== "test") || !flow || flow.startsWith("-")) {
-    throw new Error("Usage: maestro-vision <compile|test> <flow.yaml> [options]");
+    throw new Error("Usage: seenflow <compile|test> <flow.yaml> [options]");
   }
   const parsed: Record<string, string | boolean> = { command, flow };
   for (let index = 0; index < flags.length; index += 1) {

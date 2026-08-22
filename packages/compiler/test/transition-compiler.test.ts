@@ -33,15 +33,24 @@ describe("compileFlow", () => {
     expect(documents(result.yaml)[1]).toEqual([
       {
         runScript: {
-          file: ".maestro-vision/runtime/assert-visual.js",
-          env: { TEXT: "Saved", STATE: "not-visible" },
+          file: ".seenflow/runtime/assert-visual.js",
+          env: {
+            TEXT: "Saved",
+            STATE: "not-visible",
+            ACTION: 'tapOn {"id":"save-button","retryTapIfNoChange":true}',
+          },
         },
       },
       { tapOn: { id: "save-button", retryTapIfNoChange: true } },
       {
         runScript: {
-          file: ".maestro-vision/runtime/wait-visual.js",
-          env: { TEXT: "Saved", STATE: "visible", TIMEOUT: "7000" },
+          file: ".seenflow/runtime/wait-visual.js",
+          env: {
+            TEXT: "Saved",
+            STATE: "visible",
+            TIMEOUT: "7000",
+            ACTION: 'tapOn {"id":"save-button","retryTapIfNoChange":true}',
+          },
         },
       },
     ]);
@@ -58,21 +67,32 @@ describe("compileFlow", () => {
     expect(documents(result.yaml)[1]).toEqual([
       {
         runScript: {
-          file: ".maestro-vision/runtime/assert-visual.js",
-          env: { TEXT: "Loading...", STATE: "visible" },
+          file: ".seenflow/runtime/assert-visual.js",
+          env: { TEXT: "Loading...", STATE: "visible", ACTION: 'visionTap "Save"' },
         },
       },
       {
         runScript: {
-          file: ".maestro-vision/runtime/find-text.js",
-          env: { TEXT: "Save", MATCH: "exact", THRESHOLD: "0.85", OCCURRENCE: "0" },
+          file: ".seenflow/runtime/find-text.js",
+          env: {
+            TEXT: "Save",
+            MATCH: "exact",
+            THRESHOLD: "0.85",
+            OCCURRENCE: "0",
+            ACTION: 'visionTap "Save"',
+          },
         },
       },
-      { tapOn: { point: "${output.maestroVision.tapX}%,${output.maestroVision.tapY}%" } },
+      { tapOn: { point: "${output.seenflow.tapX}%,${output.seenflow.tapY}%" } },
       {
         runScript: {
-          file: ".maestro-vision/runtime/wait-visual.js",
-          env: { TEXT: "Loading...", STATE: "not-visible", TIMEOUT: "7000" },
+          file: ".seenflow/runtime/wait-visual.js",
+          env: {
+            TEXT: "Loading...",
+            STATE: "not-visible",
+            TIMEOUT: "7000",
+            ACTION: 'visionTap "Save"',
+          },
         },
       },
     ]);
@@ -94,15 +114,26 @@ describe("compileFlow", () => {
     expect(documents(result.yaml)[1]).toEqual([
       {
         runScript: {
-          file: ".maestro-vision/runtime/find-text.js",
-          env: { TEXT: "Home", MATCH: "fuzzy", THRESHOLD: "0.9", OCCURRENCE: "2" },
+          file: ".seenflow/runtime/find-text.js",
+          env: {
+            TEXT: "Home",
+            MATCH: "fuzzy",
+            THRESHOLD: "0.9",
+            OCCURRENCE: "2",
+            ACTION: 'visionTap "Home"',
+          },
         },
       },
-      { tapOn: { point: "${output.maestroVision.tapX}%,${output.maestroVision.tapY}%" } },
+      { tapOn: { point: "${output.seenflow.tapX}%,${output.seenflow.tapY}%" } },
       {
         runScript: {
-          file: ".maestro-vision/runtime/wait-visual.js",
-          env: { TEXT: "Home", STATE: "visible", TIMEOUT: "1200" },
+          file: ".seenflow/runtime/wait-visual.js",
+          env: {
+            TEXT: "Home",
+            STATE: "visible",
+            TIMEOUT: "1200",
+            ACTION: 'visionTap "Home"',
+          },
         },
       },
     ]);
@@ -111,7 +142,7 @@ describe("compileFlow", () => {
   test("removes compiler configuration and preserves warnings", () => {
     const result = compile(
       ['- tapOn: "Save"'],
-      ["appId: com.example.app", "maestroVision:", "  requireEffects: true"],
+      ["appId: com.example.app", "seenflow:", "  requireEffects: true"],
     );
 
     expect(documents(result.yaml)[0]).toEqual({ appId: "com.example.app" });

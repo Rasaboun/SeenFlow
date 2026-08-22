@@ -2,8 +2,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from maestro_vision.matching import find_matches
-from maestro_vision.ocr.paddle import PaddleOCRProvider
+from seenflow.matching import find_matches
+from seenflow.ocr.paddle import PaddleOCRProvider
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "text-screen.png"

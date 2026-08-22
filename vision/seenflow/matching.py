@@ -2,7 +2,7 @@ import unicodedata
 from difflib import SequenceMatcher
 from typing import Literal
 
-from maestro_vision.models import OCRItem, OCRMatch
+from seenflow.models import OCRItem, OCRMatch
 
 
 MatchMode = Literal["exact", "contains", "fuzzy"]

@@ -1,5 +1,5 @@
 {
-  "name": "@maestro-vision/compiler",
+  "name": "@seenflow/compiler",
   "private": true,
   "type": "module",
   "scripts": {

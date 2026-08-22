@@ -1,7 +1,7 @@
 import pytest
 
-from maestro_vision.matching import MatchSelectionError, find_matches, normalize_text, select_match
-from maestro_vision.models import BoundingBox, OCRItem
+from seenflow.matching import MatchSelectionError, find_matches, normalize_text, select_match
+from seenflow.models import BoundingBox, OCRItem
 
 
 def item(text: str, confidence: float, x: int, y: int) -> OCRItem:

@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from maestro_vision.capture.base import CaptureError, ProcessRunner, validate_device_id
+from seenflow.capture.base import CaptureError, ProcessRunner, validate_device_id
 
 
 def test_process_runner_uses_argument_arrays_without_a_shell() -> None:

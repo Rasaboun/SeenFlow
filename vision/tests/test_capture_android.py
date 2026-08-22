@@ -1,6 +1,6 @@
 import pytest
 
-from maestro_vision.capture.android import AndroidCapture
+from seenflow.capture.android import AndroidCapture
 
 
 class RecordingRunner:

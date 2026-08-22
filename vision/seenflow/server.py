@@ -11,16 +11,16 @@ import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from maestro_vision.capture.android import AndroidCapture
-from maestro_vision.capture.base import CaptureError, ScreenshotCapture
-from maestro_vision.capture.ios import IOSSimulatorCapture
-from maestro_vision.diagnostics import save_failure_artifacts
-from maestro_vision.matching import MatchSelectionError, find_matches, select_match
-from maestro_vision.models import BoundingBox, OCRItem
-from maestro_vision.ocr.paddle import PaddleOCRProvider
-from maestro_vision.ocr.provider import OCRProvider
+from seenflow.capture.android import AndroidCapture
+from seenflow.capture.base import CaptureError, ScreenshotCapture
+from seenflow.capture.ios import IOSSimulatorCapture
+from seenflow.diagnostics import save_failure_artifacts
+from seenflow.matching import MatchSelectionError, find_matches, select_match
+from seenflow.models import BoundingBox, OCRItem
+from seenflow.ocr.paddle import PaddleOCRProvider
+from seenflow.ocr.provider import OCRProvider
 
 
 HOST = "127.0.0.1"
@@ -39,6 +39,14 @@ class FindRequest(DetectRequest):
     match: Literal["exact", "contains", "fuzzy"] = "exact"
     threshold: float = Field(default=0.85, ge=0, le=1)
     occurrence: int = Field(default=0, ge=0)
+    diagnostics: bool = False
+
+    @field_validator("text")
+    @classmethod
+    def reject_blank_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("text must not be blank")
+        return value
 
 
 def create_app(
@@ -73,7 +81,7 @@ def create_app(
         "ios": IOSSimulatorCapture(),
         "android": AndroidCapture(),
     }
-    app.state.artifacts_dir = artifacts_dir or Path(".maestro-vision/artifacts")
+    app.state.artifacts_dir = artifacts_dir or Path(".seenflow/artifacts")
     app.state.debug = debug
 
     @app.middleware("http")
@@ -124,20 +132,34 @@ def create_app(
             artifacts = save_failure_artifacts(
                 app.state.artifacts_dir, image, items, selector, error.matches
             )
-            raise HTTPException(
-                status_code=404,
-                detail={
+            return {
+                "found": False,
+                "query": request.text,
+                "matches": [
+                    {**item_json(candidate.item), "score": candidate.score}
+                    for candidate in error.matches
+                ],
+                "detections": [item_json(item) for item in items],
+                "artifacts": artifacts,
+                "error": {
                     "code": "ACTION_TARGET_NOT_FOUND",
                     "message": str(error),
-                    "candidates": [item_json(candidate.item) for candidate in error.matches],
-                    "artifacts": artifacts,
                 },
-            ) from error
+            }
 
         box = match.item.box
         center_x = box.x + box.width / 2
         center_y = box.y + box.height / 2
-        return {
+        normalized_x = round(center_x / image.width * 100, 2)
+        normalized_y = round(center_y / image.height * 100, 2)
+        if app.state.debug:
+            print(
+                f"seenflow: matched text={match.item.text} score={match.score:.3f} "
+                f"confidence={match.item.confidence:.3f} "
+                f"box=({box.x},{box.y},{box.width},{box.height}) "
+                f"normalized=({normalized_x:.2f},{normalized_y:.2f})"
+            )
+        response: dict[str, object] = {
             "found": True,
             "query": request.text,
             "match": {
@@ -145,11 +167,17 @@ def create_app(
                 "score": match.score,
                 "center": {"x": center_x, "y": center_y},
                 "normalized": {
-                    "x": round(center_x / image.width * 100, 2),
-                    "y": round(center_y / image.height * 100, 2),
+                    "x": normalized_x,
+                    "y": normalized_y,
                 },
             },
         }
+        if request.diagnostics:
+            response["detections"] = [item_json(item) for item in items]
+            response["artifacts"] = save_failure_artifacts(
+                app.state.artifacts_dir, image, items, selector, matches
+            )
+        return response
 
     return app
 
@@ -166,7 +194,7 @@ def analyze(app: FastAPI, platform: str, device_id: str) -> tuple[Image.Image, l
             detail={"code": "OCR_CAPTURE_FAILED", "message": str(error)},
         ) from error
     if app.state.debug:
-        print(f"maestro-vision: capture duration={(time.perf_counter() - capture_started) * 1000:.1f}ms")
+        print(f"seenflow: capture duration={(time.perf_counter() - capture_started) * 1000:.1f}ms")
     ocr_started = time.perf_counter()
     try:
         items = app.state.ocr_provider.detect(image)
@@ -176,7 +204,7 @@ def analyze(app: FastAPI, platform: str, device_id: str) -> tuple[Image.Image, l
             detail={"code": "OCR_RUNTIME_FAILED", "message": str(error)},
         ) from error
     if app.state.debug:
-        print(f"maestro-vision: OCR duration={(time.perf_counter() - ocr_started) * 1000:.1f}ms")
+        print(f"seenflow: OCR duration={(time.perf_counter() - ocr_started) * 1000:.1f}ms")
     return image, items
 
 
@@ -193,16 +221,16 @@ def box_json(box: BoundingBox) -> dict[str, int]:
 
 
 def main() -> None:
-    port = int(os.environ["MAESTRO_VISION_PORT"])
+    port = int(os.environ["SEENFLOW_PORT"])
     if not 0 < port < 65536:
-        raise ValueError("MAESTRO_VISION_PORT must be between 1 and 65535")
+        raise ValueError("SEENFLOW_PORT must be between 1 and 65535")
     artifacts_dir = Path(
-        os.environ.get("MAESTRO_VISION_ARTIFACTS_DIR", ".maestro-vision/artifacts")
+        os.environ.get("SEENFLOW_ARTIFACTS_DIR", ".seenflow/artifacts")
     )
-    debug = os.environ.get("MAESTRO_VISION_DEBUG") == "true"
+    debug = os.environ.get("SEENFLOW_DEBUG") == "true"
     uvicorn.run(
         create_app(
-            os.environ["MAESTRO_VISION_SESSION_TOKEN"],
+            os.environ["SEENFLOW_SESSION_TOKEN"],
             artifacts_dir=artifacts_dir,
             debug=debug,
         ),

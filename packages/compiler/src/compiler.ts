@@ -15,7 +15,7 @@ import {
 
 const shorthandWarning =
   "tapOn action has no expected effect. Use expanded tapOn syntax to make this action transition-safe.";
-const defaultRuntimePath = ".maestro-vision/runtime";
+const defaultRuntimePath = ".seenflow/runtime";
 
 export interface CompileOptions {
   runtimePath?: string;
@@ -64,20 +64,29 @@ export function compileFlow(source: string, file: string, options: CompileOption
 function compileAction(action: FlowAction, runtimePath: string): unknown[] {
   if (action.kind === "maestro") return [action.value];
   if (action.kind === "tapOn") {
-    return transition(action.expect, [{ tapOn: action.tapOn }], 7000, runtimePath);
+    const description = `tapOn ${JSON.stringify(action.tapOn)}`;
+    return transition(action.expect, [{ tapOn: action.tapOn }], 7000, runtimePath, description);
   }
-  return transition(action.expect, visionTap(action, runtimePath), action.timeout, runtimePath);
+  const description = `visionTap ${JSON.stringify(action.text)}`;
+  return transition(
+    action.expect,
+    visionTap(action, runtimePath, description),
+    action.timeout,
+    runtimePath,
+    description,
+  );
 }
 
-function visionTap(action: VisionTapAction, runtimePath: string): unknown[] {
+function visionTap(action: VisionTapAction, runtimePath: string, description: string): unknown[] {
   return [
     runScript(runtimePath, "find-text.js", {
       TEXT: action.text,
       MATCH: action.match,
       THRESHOLD: String(action.threshold),
       OCCURRENCE: String(action.occurrence),
+      ACTION: description,
     }),
-    { tapOn: { point: "${output.maestroVision.tapX}%,${output.maestroVision.tapY}%" } },
+    { tapOn: { point: "${output.seenflow.tapX}%,${output.seenflow.tapY}%" } },
   ];
 }
 
@@ -86,17 +95,25 @@ function transition(
   action: unknown[],
   timeout: number,
   runtimePath: string,
+  description: string,
 ): unknown[] {
   const state = effect.kind === "visibleText" ? "visible" : "not-visible";
   return [
     ...(effect.requireTransition
-      ? [runScript(runtimePath, "assert-visual.js", { TEXT: effect.text, STATE: inverse(state) })]
+      ? [
+          runScript(runtimePath, "assert-visual.js", {
+            TEXT: effect.text,
+            STATE: inverse(state),
+            ACTION: description,
+          }),
+        ]
       : []),
     ...action,
     runScript(runtimePath, "wait-visual.js", {
       TEXT: effect.text,
       STATE: state,
       TIMEOUT: String(timeout),
+      ACTION: description,
     }),
   ];
 }
@@ -111,6 +128,6 @@ function runScript(runtimePath: string, file: string, env: Record<string, string
 
 function nativeConfig(config: unknown): unknown {
   if (typeof config !== "object" || config === null || Array.isArray(config)) return config;
-  const { maestroVision: _compilerConfig, ...maestroConfig } = config as Record<string, unknown>;
+  const { seenflow: _compilerConfig, ...maestroConfig } = config as Record<string, unknown>;
   return maestroConfig;
 }

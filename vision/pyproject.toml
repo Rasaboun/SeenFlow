@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "maestro-vision-sidecar"
+name = "seenflow-sidecar"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
@@ -22,13 +22,13 @@ test = [
 ]
 
 [project.scripts]
-maestro-vision-sidecar = "maestro_vision.server:main"
+seenflow-sidecar = "seenflow.server:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["maestro_vision"]
+packages = ["seenflow"]
 
 [tool.uv.sources]
 paddlepaddle = { index = "paddle-cpu" }

@@ -6,9 +6,9 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from maestro_vision.capture.base import CaptureError
-from maestro_vision.models import BoundingBox, OCRItem
-from maestro_vision.server import create_app
+from seenflow.capture.base import CaptureError
+from seenflow.models import BoundingBox, OCRItem
+from seenflow.server import create_app
 
 
 TOKEN = "test-session-token"
@@ -131,10 +131,36 @@ def test_find_returns_absent_and_captures_fresh_screens() -> None:
     assert provider.calls == 2
 
 
+def test_missing_occurrence_returns_all_candidates_and_artifacts(tmp_path: Path) -> None:
+    provider = FakeProvider(
+        [
+            OCRItem("Add", 0.9, BoundingBox(10, 10, 30, 20)),
+            OCRItem("Add", 0.8, BoundingBox(60, 10, 30, 20)),
+        ]
+    )
+    api, _capture = client(provider, artifacts_dir=tmp_path)
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Add",
+            "occurrence": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["found"] is False
+    assert [item["text"] for item in response.json()["matches"]] == ["Add", "Add"]
+    assert Path(response.json()["artifacts"]["annotated"]).is_file()
+
+
 @pytest.mark.parametrize(
     "body",
     [
         {"platform": "windows", "deviceId": "ABC-123", "text": "Save"},
+        {"platform": "ios", "deviceId": "ABC-123", "text": "   "},
         {"platform": "ios", "deviceId": "ABC-123", "text": "Save", "occurrence": -1},
         {"platform": "ios", "deviceId": "ABC-123", "text": "Save", "threshold": 1.1},
     ],
@@ -192,6 +218,26 @@ def test_missing_text_saves_actionable_visual_artifacts(tmp_path: Path) -> None:
     ]
 
 
+def test_found_text_can_request_failure_diagnostics(tmp_path: Path) -> None:
+    provider = FakeProvider([OCRItem("Loading...", 0.96, BoundingBox(20, 20, 80, 20))])
+    api, _capture = client(provider, artifacts_dir=tmp_path)
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Loading...",
+            "diagnostics": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["found"] is True
+    assert response.json()["detections"][0]["text"] == "Loading..."
+    assert Path(response.json()["artifacts"]["screenshot"]).is_file()
+
+
 def test_request_body_size_is_limited() -> None:
     api, _capture = client(FakeProvider([]))
 
@@ -205,10 +251,18 @@ def test_request_body_size_is_limited() -> None:
 
 
 def test_debug_mode_logs_capture_and_ocr_timings(capsys: pytest.CaptureFixture[str]) -> None:
-    api, _capture = client(FakeProvider([]), debug=True)
+    api, _capture = client(
+        FakeProvider([OCRItem("Save", 0.97, BoundingBox(80, 40, 40, 20))]),
+        debug=True,
+    )
 
-    api.post("/v1/text/detect", json={"platform": "ios", "deviceId": "ABC-123"})
+    api.post(
+        "/v1/text/find",
+        json={"platform": "ios", "deviceId": "ABC-123", "text": "Save"},
+    )
 
     output = capsys.readouterr().out
     assert "capture duration=" in output
     assert "OCR duration=" in output
+    assert "matched text=Save score=1.000 confidence=0.970" in output
+    assert "box=(80,40,40,20) normalized=(50.00,50.00)" in output

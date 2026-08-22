@@ -4,7 +4,7 @@ from typing import Any
 import numpy as np
 from PIL.Image import Image, Resampling
 
-from maestro_vision.models import BoundingBox, OCRItem
+from seenflow.models import BoundingBox, OCRItem
 
 
 MAX_OCR_DIMENSION = 1200

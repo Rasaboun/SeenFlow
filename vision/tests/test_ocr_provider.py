@@ -1,7 +1,7 @@
 from PIL import Image
 
-from maestro_vision.models import BoundingBox, OCRItem
-from maestro_vision.ocr.provider import OCRProvider
+from seenflow.models import BoundingBox, OCRItem
+from seenflow.ocr.provider import OCRProvider
 
 
 class StubProvider:

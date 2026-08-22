@@ -2,8 +2,8 @@ from typing import Any
 
 from PIL import Image
 
-from maestro_vision.models import BoundingBox, OCRItem
-from maestro_vision.ocr.paddle import PaddleOCRProvider
+from seenflow.models import BoundingBox, OCRItem
+from seenflow.ocr.paddle import PaddleOCRProvider
 
 
 class FakeResult:

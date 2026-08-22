@@ -5,13 +5,13 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>MaestroVisionFixture</string>
+    <string>SeenflowFixture</string>
     <key>CFBundleIdentifier</key>
-    <string>com.example.maestrovisionfixture</string>
+    <string>com.example.seenflowfixture</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Maestro Vision Fixture</string>
+    <string>Seenflow Fixture</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

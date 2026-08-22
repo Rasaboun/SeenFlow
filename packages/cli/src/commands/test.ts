@@ -36,12 +36,12 @@ export async function testFile(
 ): Promise<number> {
   const cwd = options.cwd ?? process.cwd();
   const source = resolve(cwd, flow);
-  const output = join(cwd, ".maestro-vision", "generated", basename(flow));
+  const output = join(cwd, ".seenflow", "generated", basename(flow));
 
   compileFlow(await readFile(source, "utf8"), source);
   const sidecar = await dependencies.startSidecar({
     debug: options.debug,
-    artifactsDir: join(cwd, ".maestro-vision", "artifacts"),
+    artifactsDir: join(cwd, ".seenflow", "artifacts"),
   });
   const removeSignalCleanup = installSignalCleanup(sidecar.stop);
   try {
@@ -50,9 +50,9 @@ export async function testFile(
       flow: output,
       device: options.device,
       env: {
-        MAESTRO_VISION_URL: sidecar.url,
-        MAESTRO_VISION_TOKEN: sidecar.token,
-        MAESTRO_VISION_DEBUG: String(options.debug ?? false),
+        SEENFLOW_URL: sidecar.url,
+        SEENFLOW_TOKEN: sidecar.token,
+        SEENFLOW_DEBUG: String(options.debug ?? false),
       },
     });
   } finally {

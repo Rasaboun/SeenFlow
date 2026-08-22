@@ -1,17 +1,17 @@
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { parseArgs } from "../src/index.js";
 import { compileFile } from "../src/commands/compile.js";
 import { installSignalCleanup, testFile } from "../src/commands/test.js";
-import { maestroArgs } from "../src/maestro.js";
+import { maestroArgs, maestroFailureCode } from "../src/maestro.js";
 
 const temporary: string[] = [];
 
 async function fixture() {
-  const directory = await mkdtemp(join(tmpdir(), "maestro-vision-cli-"));
+  const directory = await mkdtemp(join(tmpdir(), "seenflow-cli-"));
   temporary.push(directory);
   const source = join(directory, "flow.yaml");
   await writeFile(
@@ -36,6 +36,14 @@ afterEach(async () => {
 });
 
 describe("CLI", () => {
+  test("exposes the repository CLI as seenflow", async () => {
+    const manifest = JSON.parse(
+      await readFile(resolve(import.meta.dirname, "../../../package.json"), "utf8"),
+    );
+
+    expect(manifest.bin).toEqual({ seenflow: "packages/cli/src/index.ts" });
+  });
+
   test("parses supported compile and test flags", () => {
     expect(parseArgs(["compile", "flow.yaml", "--output", "/tmp/out.yaml"])).toEqual({
       command: "compile",
@@ -55,16 +63,22 @@ describe("CLI", () => {
       maestroArgs({
         flow: "generated.yaml",
         device: "ABC-123",
-        env: { MAESTRO_VISION_TOKEN: "secret" },
+        env: { SEENFLOW_TOKEN: "secret" },
       }),
     ).toEqual([
       "--device",
       "ABC-123",
       "test",
       "-e",
-      "MAESTRO_VISION_TOKEN=secret",
+      "SEENFLOW_TOKEN=secret",
       "generated.yaml",
     ]);
+  });
+
+  test("classifies only otherwise-unclassified Maestro failures as action execution errors", () => {
+    expect(maestroFailureCode(0, "")).toBeUndefined();
+    expect(maestroFailureCode(1, "PRECONDITION_FAILED\n...")).toBeUndefined();
+    expect(maestroFailureCode(1, "Element not found")).toBe("ACTION_EXECUTION_FAILED");
   });
 
   test("terminates the sidecar on SIGINT", async () => {
@@ -86,14 +100,14 @@ describe("CLI", () => {
 
   test("compile writes official YAML and copies runtime beside the generated workspace", async () => {
     const { directory, source } = await fixture();
-    const output = join(directory, ".maestro-vision", "generated", "flow.yaml");
+    const output = join(directory, ".seenflow", "generated", "flow.yaml");
 
     const result = await compileFile(source, { cwd: directory });
 
     expect(result.output).toBe(output);
-    expect(await readFile(output, "utf8")).not.toContain("visionTap");
+    expect(await readFile(output, "utf8")).not.toContain("- visionTap:");
     expect(await readFile(output, "utf8")).toContain("../runtime/find-text.js");
-    await expect(stat(join(directory, ".maestro-vision", "runtime", "find-text.js"))).resolves.toBeTruthy();
+    await expect(stat(join(directory, ".seenflow", "runtime", "find-text.js"))).resolves.toBeTruthy();
   });
 
   test("test starts sidecar, compiles, forwards the exact Maestro exit code, and stops", async () => {
@@ -121,16 +135,16 @@ describe("CLI", () => {
     expect(events).toEqual(["sidecar", "maestro", "stop"]);
     expect(startSidecar).toHaveBeenCalledWith({
       debug: true,
-      artifactsDir: join(directory, ".maestro-vision", "artifacts"),
+      artifactsDir: join(directory, ".seenflow", "artifacts"),
     });
     expect(runMaestro).toHaveBeenCalledWith(
       expect.objectContaining({
-        flow: join(directory, ".maestro-vision", "generated", "flow.yaml"),
+        flow: join(directory, ".seenflow", "generated", "flow.yaml"),
         device: "ABC-123",
         env: {
-          MAESTRO_VISION_URL: "http://127.0.0.1:43210",
-          MAESTRO_VISION_TOKEN: "token-123",
-          MAESTRO_VISION_DEBUG: "true",
+          SEENFLOW_URL: "http://127.0.0.1:43210",
+          SEENFLOW_TOKEN: "token-123",
+          SEENFLOW_DEBUG: "true",
         },
       }),
     );

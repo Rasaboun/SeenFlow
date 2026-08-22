@@ -1,8 +1,8 @@
 {
-  "name": "@maestro-vision/cli",
+  "name": "@seenflow/cli",
   "private": true,
   "type": "module",
   "bin": {
-    "maestro-vision": "src/index.ts"
+    "seenflow": "src/index.ts"
   }
 }

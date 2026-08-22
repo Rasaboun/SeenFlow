@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from maestro_vision.capture.ios import IOSSimulatorCapture
+from seenflow.capture.ios import IOSSimulatorCapture
 
 
 class RecordingRunner:

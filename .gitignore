@@ -1,4 +1,6 @@
-# Generated Maestro Vision files
+# Generated Seenflow files
+.seenflow/
+# Legacy pre-rename workspace
 .maestro-vision/
 .superpowers/
 docs/

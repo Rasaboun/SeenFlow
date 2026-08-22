@@ -14,8 +14,8 @@ function baseGlobals(body: unknown, overrides: Record<string, unknown> = {}) {
   const post = vi.fn(() => ({ ok: true, status: 200, body: JSON.stringify(body) }));
   return {
     globals: {
-      MAESTRO_VISION_URL: "http://127.0.0.1:43123",
-      MAESTRO_VISION_TOKEN: "secret-token",
+      SEENFLOW_URL: "http://127.0.0.1:43123",
+      SEENFLOW_TOKEN: "secret-token",
       MAESTRO_DEVICE_UDID: "device-123",
       maestro: { platform: "ios" },
       http: { post },
@@ -62,7 +62,7 @@ describe("Maestro runtime bridge", () => {
       }),
     });
     expect(globals.output).toEqual({
-      maestroVision: {
+      seenflow: {
         x: 51.33,
         y: 78.21,
         tapX: 51,
@@ -79,7 +79,7 @@ describe("Maestro runtime bridge", () => {
       query: "Save",
       matches: [],
       detections: [{ text: "START COOKlNG", confidence: 0.91 }],
-      artifacts: { annotated: ".maestro-vision/artifacts/run/annotated.png" },
+      artifacts: { annotated: ".seenflow/artifacts/run/annotated.png" },
     });
 
     expect(() =>
@@ -95,6 +95,28 @@ describe("Maestro runtime bridge", () => {
     );
   });
 
+  test("find-text treats a missing occurrence as an action target failure", () => {
+    const { globals } = baseGlobals({
+      found: false,
+      query: "Add",
+      matches: [
+        { text: "Add", confidence: 0.9 },
+        { text: "Add", confidence: 0.8 },
+      ],
+      detections: [{ text: "Add", confidence: 0.9 }],
+    });
+
+    expect(() =>
+      execute("find-text.js", {
+        ...globals,
+        TEXT: "Add",
+        MATCH: "exact",
+        THRESHOLD: "0.85",
+        OCCURRENCE: "2",
+      }),
+    ).toThrowError(/ACTION_TARGET_NOT_FOUND[\s\S]*Matching candidates:[\s\S]*confidence=0\.9/);
+  });
+
   test.each([
     ["visible", false],
     ["not-visible", true],
@@ -102,8 +124,28 @@ describe("Maestro runtime bridge", () => {
     const { globals } = baseGlobals({ found, query: "Saved", matches: [] });
 
     expect(() =>
-      execute("assert-visual.js", { ...globals, TEXT: "Saved", STATE: state }),
-    ).toThrowError(/PRECONDITION_FAILED[\s\S]*Saved/);
+      execute("assert-visual.js", {
+        ...globals,
+        ACTION: 'visionTap "Save"',
+        TEXT: "Saved",
+        STATE: state,
+      }),
+    ).toThrowError(/PRECONDITION_FAILED[\s\S]*Action:[\s\S]*visionTap "Save"[\s\S]*Saved/);
+  });
+
+  test("debug mode logs the visual precondition result", () => {
+    const { globals } = baseGlobals({ found: false, query: "Saved", matches: [] });
+
+    execute("assert-visual.js", {
+      ...globals,
+      SEENFLOW_DEBUG: "true",
+      TEXT: "Saved",
+      STATE: "not-visible",
+    });
+
+    expect((globals.console as { log: ReturnType<typeof vi.fn> }).log).toHaveBeenCalledWith(
+      "seenflow: precondition text=Saved expected=not-visible found=false",
+    );
   });
 
   test("wait-visual polls until the visual postcondition is satisfied", () => {
@@ -141,18 +183,66 @@ describe("Maestro runtime bridge", () => {
       query: "Saved",
       matches: [],
       detections: [{ text: "Saving...", confidence: 0.93 }],
-      artifacts: { screenshot: ".maestro-vision/artifacts/run/screenshot.png" },
+      artifacts: { screenshot: ".seenflow/artifacts/run/screenshot.png" },
     });
 
     expect(() =>
       execute("wait-visual.js", {
         ...globals,
+        ACTION: 'visionTap "Save"',
         Date: FakeDate,
         TEXT: "Saved",
         STATE: "visible",
         TIMEOUT: "500",
       }),
-    ).toThrowError(/POSTCONDITION_TIMEOUT[\s\S]*500ms[\s\S]*Saving\.\.\.[\s\S]*screenshot\.png/);
+    ).toThrowError(
+      /POSTCONDITION_TIMEOUT[\s\S]*Action:[\s\S]*visionTap "Save"[\s\S]*500ms[\s\S]*Attempts:[\s\S]*Saving\.\.\.[\s\S]*screenshot\.png/,
+    );
+  });
+
+  test("not-visible timeout takes a final diagnostic screenshot", () => {
+    let now = 0;
+    class FakeDate {
+      static now() {
+        now += 300;
+        return now;
+      }
+    }
+    const { globals, post } = baseGlobals(null);
+    post.mockImplementation((_url, options: { body: string }) => {
+      const diagnostic = JSON.parse(options.body).diagnostics === true;
+      return diagnostic
+        ? {
+        ok: true,
+        status: 200,
+        body: JSON.stringify({
+          found: true,
+          match: { text: "Loading..." },
+          detections: [{ text: "Loading...", confidence: 0.96 }],
+          artifacts: { screenshot: ".seenflow/artifacts/run/screenshot.png" },
+        }),
+          }
+        : {
+            ok: true,
+            status: 200,
+            body: JSON.stringify({ found: true, match: { text: "Loading..." } }),
+          };
+    });
+
+    expect(() =>
+      execute("wait-visual.js", {
+        ...globals,
+        ACTION: 'visionTap "Close"',
+        Date: FakeDate,
+        TEXT: "Loading...",
+        STATE: "not-visible",
+        TIMEOUT: "500",
+      }),
+    ).toThrowError(/POSTCONDITION_TIMEOUT[\s\S]*Loading\.\.\.[\s\S]*screenshot\.png/);
+    const lastCall = post.mock.calls.at(-1)?.[1] as { body: string };
+    expect(JSON.parse(lastCall.body)).toMatchObject({
+      diagnostics: true,
+    });
   });
 
   test("rejects sidecar HTTP failures instead of accepting malformed state", () => {
@@ -162,5 +252,55 @@ describe("Maestro runtime bridge", () => {
     expect(() =>
       execute("assert-visual.js", { ...globals, TEXT: "Saved", STATE: "not-visible" }),
     ).toThrowError(/OCR_RUNTIME_FAILED[\s\S]*401/);
+  });
+
+  test.each(["assert-visual.js", "find-text.js", "wait-visual.js"])(
+    "%s preserves sidecar capture failure codes",
+    (file) => {
+      const { globals, post } = baseGlobals(null);
+      post.mockReturnValue({
+        ok: false,
+        status: 502,
+        body: JSON.stringify({
+          detail: { code: "OCR_CAPTURE_FAILED", message: "adb screencap failed" },
+        }),
+      });
+
+      expect(() =>
+        execute(file, {
+          ...globals,
+          ACTION: 'visionTap "Save"',
+          TEXT: "Save",
+          MATCH: "exact",
+          THRESHOLD: "0.85",
+          OCCURRENCE: "0",
+          STATE: "visible",
+          TIMEOUT: "500",
+        }),
+      ).toThrowError(/^OCR_CAPTURE_FAILED[\s\S]*adb screencap failed/);
+    },
+  );
+
+  test.each([
+    [{ found: "yes" }, "invalid find response"],
+    [
+      {
+        found: true,
+        match: { text: "Save", confidence: 0.9, normalized: { x: 101, y: 50 } },
+      },
+      "invalid coordinates",
+    ],
+  ])("rejects malformed find responses", (body, message) => {
+    const { globals } = baseGlobals(body);
+
+    expect(() =>
+      execute("find-text.js", {
+        ...globals,
+        TEXT: "Save",
+        MATCH: "exact",
+        THRESHOLD: "0.85",
+        OCCURRENCE: "0",
+      }),
+    ).toThrowError(new RegExp(`OCR_RUNTIME_FAILED[\\s\\S]*${message}`));
   });
 });

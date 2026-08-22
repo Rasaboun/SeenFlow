@@ -1,4 +1,4 @@
-package com.example.maestrovisionfixture;
+package com.example.seenflowfixture;
 
 import android.app.Activity;
 import android.graphics.Canvas;

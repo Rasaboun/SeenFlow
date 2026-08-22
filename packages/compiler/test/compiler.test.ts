@@ -100,6 +100,12 @@ describe("buildFlowAst", () => {
     expect(() => buildFlowAst(flow(lines))).toThrow(/flows\/checkout\.yaml:3/);
   });
 
+  test("explains how to add a missing visionTap effect", () => {
+    expect(() => buildFlowAst(flow(["- visionTap:", "    text: Save"]))).toThrow(
+      /visionTap requires an expected effect[\s\S]*expect:[\s\S]*visibleText: "Saved"/,
+    );
+  });
+
   test("extracts tapOn expect while preserving every native property", () => {
     const ast = buildFlowAst(
       flow([
@@ -145,7 +151,7 @@ describe("buildFlowAst", () => {
 
   test("passes expanded tapOn without expect through when effects are optional", () => {
     const parsed = flowWithConfig(
-      ["appId: com.example.app", "maestroVision:", "  requireEffects: false"],
+      ["appId: com.example.app", "seenflow:", "  requireEffects: false"],
       ["- tapOn:", "    text: Save"],
     );
 
