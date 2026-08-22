@@ -43,7 +43,7 @@ If `Saved` is visible before the tap, the flow fails before the action. Use `req
 - Bun;
 - Python 3.11+ and `uv`.
 
-Physical iOS devices and Maestro Cloud are not supported in v0.1.
+Physical iOS devices and Maestro Cloud are not supported in v0.2.
 
 ## Install from source
 
@@ -70,9 +70,10 @@ The default output is `.seenflow/generated/flow.yaml`. Compilation never runs Ma
 seenflow test flow.yaml
 seenflow test flow.yaml --device <UDID>
 seenflow test flow.yaml --device <UDID> --debug
+seenflow test flow.yaml --repeat 20 --min-stability 0.98
 ```
 
-The test command validates the source, starts an authenticated localhost-only sidecar on a random port, compiles the flow, forwards Maestro's output, preserves its exit code, and stops the sidecar.
+The test command validates the source, starts an authenticated localhost-only sidecar on a random port, compiles the flow, forwards Maestro's output, preserves its exit code, and stops the sidecar. Repeated mode runs Maestro sequentially against the same loaded OCR model and exits successfully only when the measured pass rate meets `--min-stability` (default `1.0`).
 
 ## Syntax
 
@@ -96,9 +97,20 @@ appId: com.example.app
     retryTapIfNoChange: true
     expect:
       notVisibleText: "Loading..."
+
+- swipe:
+    direction: UP
+    waitToSettleTimeoutMs: 500
+    expect:
+      visibleText: "Orders"
+
+- longPressOn:
+    point: "50%,50%"
+    expect:
+      visibleText: "Actions"
 ```
 
-`visionTap` defaults to exact matching, threshold `0.85`, occurrence `0`, and timeout `7000ms`. Expanded `tapOn` keeps all native Maestro properties and uses OCR only for its expected effect. Normal and unknown Maestro commands pass through unchanged. Shorthand `tapOn: "Save"` remains compatible and emits a transition-safety warning.
+`visionTap` defaults to exact matching, threshold `0.85`, occurrence `0`, and timeout `7000ms`. Expanded `tapOn`, `swipe`, and `longPressOn` keep all native Maestro properties and use OCR only for their expected effects. Normal and unknown Maestro commands pass through unchanged. Effectless `swipe` and `longPressOn` remain compatible and emit transition-safety warnings; existing `tapOn` strictness is unchanged.
 
 Effects are screenshot-based OCR assertions. They support exactly one of `visibleText` or `notVisibleText`. Matching Unicode-normalizes, trims, collapses whitespace, and case-folds without globally removing punctuation.
 
@@ -106,15 +118,18 @@ Effects are screenshot-based OCR assertions. They support exactly one of `visibl
 
 Visual failures report a distinct code such as `PRECONDITION_FAILED`, `ACTION_TARGET_NOT_FOUND`, `POSTCONDITION_TIMEOUT`, `OCR_CAPTURE_FAILED`, or `OCR_RUNTIME_FAILED`.
 
-Artifacts are written under `.seenflow/artifacts/<timestamp>/`:
+Every OCR decision is journaled under a run and source step:
 
 ```text
-screenshot.png
-annotated.png
-ocr.json
+.seenflow/artifacts/<run-id>/
+├── manifest.json
+└── <step>-<phase>-<attempt>/
+    ├── screenshot.png
+    ├── annotated.png
+    └── ocr.json
 ```
 
-`--debug` also prints capture/OCR durations, match details, coordinates, precondition state, and polling attempts. Add this to `.gitignore`:
+Successful journals are removed by default. Failed runs remain, and `--debug` retains successful journals while also printing capture/OCR durations, match details, coordinates, precondition state, and polling attempts. Add this to `.gitignore`:
 
 ```gitignore
 .seenflow/
@@ -128,6 +143,7 @@ iOS Simulator:
 examples/fixtures/ios/build.sh
 xcrun simctl install <UDID> .seenflow/fixtures/ios/SeenflowFixture.app
 seenflow test examples/ios/continue-welcome.yaml --device <UDID>
+seenflow test examples/ios/long-press-actions.yaml --device <UDID>
 ```
 
 Android (SDK 34 platform and build-tools 35):
@@ -136,13 +152,14 @@ Android (SDK 34 platform and build-tools 35):
 ANDROID_SDK_ROOT=/path/to/sdk examples/fixtures/android/build.sh
 adb -s <UDID> install -r .seenflow/fixtures/android/SeenflowFixture.apk
 seenflow test examples/android/continue-welcome.yaml --device <UDID>
+seenflow test examples/android/swipe-orders.yaml --device <UDID>
 ```
 
-Both fixture apps draw `Continue` directly into pixels and hide accessibility descendants. The transition-safety flows launch with `Welcome` already rendered and must fail before the tap.
+Both fixture apps draw their labels directly into pixels and hide accessibility descendants. They cover OCR tapping, native swipe and long-press effects, and transition-safety failure before an action.
 
 ## Scope
 
-v0.1 deliberately excludes VLMs/LLMs, image or icon selectors, template matching, visual regression, Appium, custom swipe/input/launch implementations, physical iOS devices, Maestro Cloud, and changes to Maestro itself. Screenshot capture is the only device operation owned by the sidecar.
+v0.2 deliberately excludes VLMs/LLMs, image or icon selectors, template matching, video generation, visual regression, Appium, custom gesture implementations, parallel stability runs, physical iOS devices, Maestro Cloud, and changes to Maestro itself. Screenshot capture is the only device operation owned by the sidecar.
 
 ## Development
 

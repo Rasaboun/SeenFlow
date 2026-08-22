@@ -2,6 +2,10 @@ import UIKit
 
 final class FixtureView: UIView {
     private var tapped = false
+    private var longPressed = false
+    private let longPressMode = ProcessInfo.processInfo.arguments.contains {
+        $0.contains("longPressMode")
+    }
     private let welcomeInitiallyVisible = ProcessInfo.processInfo.arguments.contains {
         $0.contains("welcomeInitiallyVisible")
     }
@@ -11,6 +15,11 @@ final class FixtureView: UIView {
         backgroundColor = .white
         isAccessibilityElement = false
         accessibilityElementsHidden = true
+        if longPressMode {
+            let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+            recognizer.minimumPressDuration = 0.5
+            addGestureRecognizer(recognizer)
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -22,6 +31,10 @@ final class FixtureView: UIView {
     }
 
     override func draw(_ rect: CGRect) {
+        if longPressMode {
+            draw(longPressed ? "Actions" : "Press and hold", centerY: bounds.midY, color: .black, size: 52)
+            return
+        }
         if welcomeInitiallyVisible || tapped {
             draw("Welcome", centerY: bounds.midY - 170, color: .black, size: 52)
         }
@@ -35,8 +48,15 @@ final class FixtureView: UIView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard !longPressMode else { return }
         guard let point = touches.first?.location(in: self), buttonRect.contains(point) else { return }
         tapped = true
+        setNeedsDisplay()
+    }
+
+    @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+        guard recognizer.state == .began else { return }
+        longPressed = true
         setNeedsDisplay()
     }
 

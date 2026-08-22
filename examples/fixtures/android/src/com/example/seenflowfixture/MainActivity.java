@@ -14,17 +14,22 @@ public final class MainActivity extends Activity {
     public void onCreate(Bundle state) {
         super.onCreate(state);
         boolean welcomeInitiallyVisible = getIntent().getBooleanExtra("welcomeInitiallyVisible", false);
-        setContentView(new FixtureView(welcomeInitiallyVisible));
+        boolean swipeMode = getIntent().getBooleanExtra("swipeMode", false);
+        setContentView(new FixtureView(welcomeInitiallyVisible, swipeMode));
     }
 
     private final class FixtureView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final boolean welcomeInitiallyVisible;
+        private final boolean swipeMode;
         private boolean tapped;
+        private boolean swiped;
+        private float touchDownY;
 
-        FixtureView(boolean welcomeInitiallyVisible) {
+        FixtureView(boolean welcomeInitiallyVisible, boolean swipeMode) {
             super(MainActivity.this);
             this.welcomeInitiallyVisible = welcomeInitiallyVisible;
+            this.swipeMode = swipeMode;
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             setBackgroundColor(Color.WHITE);
         }
@@ -38,6 +43,10 @@ public final class MainActivity extends Activity {
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
+            if (swipeMode) {
+                drawText(canvas, swiped ? "Orders" : "Swipe up", getHeight() / 2f, Color.BLACK, 104);
+                return;
+            }
             if (welcomeInitiallyVisible || tapped) drawText(canvas, "Welcome", getHeight() / 2f - 340, Color.BLACK, 104);
             if (tapped) {
                 drawText(canvas, "Tapped", getHeight() / 2f, Color.BLACK, 88);
@@ -50,6 +59,14 @@ public final class MainActivity extends Activity {
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
+            if (swipeMode) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) touchDownY = event.getY();
+                if (event.getAction() == MotionEvent.ACTION_UP && touchDownY - event.getY() >= 200) {
+                    swiped = true;
+                    invalidate();
+                }
+                return true;
+            }
             if (event.getAction() != MotionEvent.ACTION_UP || !button().contains(event.getX(), event.getY())) return true;
             tapped = true;
             invalidate();

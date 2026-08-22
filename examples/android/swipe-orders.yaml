@@ -1,0 +1,12 @@
+appId: com.example.seenflowfixture
+---
+
+- launchApp:
+    clearState: true
+    arguments:
+      swipeMode: true
+
+- swipe:
+    direction: UP
+    expect:
+      visibleText: "Orders"

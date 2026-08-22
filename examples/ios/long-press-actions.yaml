@@ -1,0 +1,12 @@
+appId: com.example.seenflowfixture
+---
+
+- launchApp:
+    clearState: true
+    arguments:
+      longPressMode: true
+
+- longPressOn:
+    point: "50%,50%"
+    expect:
+      visibleText: "Actions"
