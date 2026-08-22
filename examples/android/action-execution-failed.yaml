@@ -1,0 +1,9 @@
+appId: com.example.seenflowfixture
+---
+
+- launchApp
+
+- tapOn:
+    id: "missing-button"
+    expect:
+      visibleText: "Welcome"
