@@ -189,4 +189,72 @@ describe("buildFlowAst", () => {
       ),
     ).toThrow(/flows\/checkout\.yaml:3: tapOn\.expect\.requireTransition must be a boolean/);
   });
+
+  test("extracts swipe expect while preserving native gesture properties", () => {
+    const ast = buildFlowAst(
+      flow([
+        "- swipe:",
+        "    direction: UP",
+        "    waitToSettleTimeoutMs: 500",
+        "    expect:",
+        "      visibleText: Orders",
+      ]),
+    );
+
+    expect(ast.actions[0]).toEqual({
+      kind: "nativeEffect",
+      command: "swipe",
+      value: { direction: "UP", waitToSettleTimeoutMs: 500 },
+      expect: { kind: "visibleText", text: "Orders", requireTransition: true },
+      location: { file: "flows/checkout.yaml", line: 3, column: 1 },
+    });
+  });
+
+  test("extracts longPressOn expect while preserving native selector properties", () => {
+    const ast = buildFlowAst(
+      flow([
+        "- longPressOn:",
+        "    id: product-card",
+        "    point: 50%,50%",
+        "    expect:",
+        "      notVisibleText: Closed",
+      ]),
+    );
+
+    expect(ast.actions[0]).toMatchObject({
+      kind: "nativeEffect",
+      command: "longPressOn",
+      value: { id: "product-card", point: "50%,50%" },
+      expect: { kind: "notVisibleText", text: "Closed", requireTransition: true },
+    });
+  });
+
+  test.each([
+    ["swipe", ["- swipe:", "    direction: UP"]],
+    ["longPressOn", ['- longPressOn: "Product"']],
+  ])("keeps effectless %s compatible and warns", (command, lines) => {
+    const ast = buildFlowAst(flow(lines));
+
+    expect(ast.actions[0]).toMatchObject({ kind: "maestro" });
+    expect(ast.warnings).toEqual([
+      {
+        location: { file: "flows/checkout.yaml", line: 3, column: 1 },
+        message: `${command} action has no expected effect. Add expect to make this action transition-safe.`,
+      },
+    ]);
+  });
+
+  test("rejects invalid native gesture effects at the command source", () => {
+    expect(() =>
+      buildFlowAst(
+        flow([
+          "- swipe:",
+          "    direction: UP",
+          "    expect:",
+          "      visibleText: Orders",
+          "      requireTransition: null",
+        ]),
+      ),
+    ).toThrow(/flows\/checkout\.yaml:3: swipe\.expect\.requireTransition must be a boolean/);
+  });
 });

@@ -6,9 +6,12 @@ import { parseFlow, type ParsedFlow } from "./parser.js";
 import {
   effectsRequired,
   hasExpectedEffect,
+  hasNativeExpectedEffect,
   isExpandedTapOn,
   isShorthandTapOn,
   isVisionTap,
+  nativeEffectCommand,
+  parseNativeEffect,
   parseTapOn,
   parseVisionTap,
 } from "./schema.js";
@@ -33,6 +36,17 @@ export function buildFlowAst(parsed: ParsedFlow): FlowAst {
     config: parsed.config,
     actions: parsed.commands.map((command) => {
       if (isVisionTap(command)) return parseVisionTap(command);
+      const nativeCommand = nativeEffectCommand(command);
+      if (nativeCommand) {
+        if (hasNativeExpectedEffect(command, nativeCommand)) {
+          return parseNativeEffect(command, nativeCommand);
+        }
+        warnings.push({
+          location: command.location,
+          message: `${nativeCommand} action has no expected effect. Add expect to make this action transition-safe.`,
+        });
+        return { kind: "maestro", value: command.value, location: command.location };
+      }
       if (isExpandedTapOn(command)) {
         if (hasExpectedEffect(command)) return parseTapOn(command);
         if (requireEffects) {
@@ -54,30 +68,49 @@ export function compileFlow(source: string, file: string, options: CompileOption
   const ast = buildFlowAst(parseFlow(source, file));
   const config = nativeConfig(ast.config);
   const runtimePath = options.runtimePath ?? defaultRuntimePath;
-  const commands = ast.actions.flatMap((action) => compileAction(action, runtimePath));
+  const commands = ast.actions.flatMap((action, index) =>
+    compileAction(action, runtimePath, index + 1),
+  );
   return {
     yaml: `${stringify(config).trimEnd()}\n---\n${stringify(commands)}`,
     warnings: ast.warnings,
   };
 }
 
-function compileAction(action: FlowAction, runtimePath: string): unknown[] {
+function compileAction(action: FlowAction, runtimePath: string, step: number): unknown[] {
   if (action.kind === "maestro") return [action.value];
   if (action.kind === "tapOn") {
     const description = `tapOn ${JSON.stringify(action.tapOn)}`;
-    return transition(action.expect, [{ tapOn: action.tapOn }], 7000, runtimePath, description);
+    return transition(action.expect, [{ tapOn: action.tapOn }], 7000, runtimePath, description, step);
+  }
+  if (action.kind === "nativeEffect") {
+    const description = `${action.command} ${JSON.stringify(action.value)}`;
+    return transition(
+      action.expect,
+      [{ [action.command]: action.value }],
+      7000,
+      runtimePath,
+      description,
+      step,
+    );
   }
   const description = `visionTap ${JSON.stringify(action.text)}`;
   return transition(
     action.expect,
-    visionTap(action, runtimePath, description),
+    visionTap(action, runtimePath, description, step),
     action.timeout,
     runtimePath,
     description,
+    step,
   );
 }
 
-function visionTap(action: VisionTapAction, runtimePath: string, description: string): unknown[] {
+function visionTap(
+  action: VisionTapAction,
+  runtimePath: string,
+  description: string,
+  step: number,
+): unknown[] {
   return [
     runScript(runtimePath, "find-text.js", {
       TEXT: action.text,
@@ -85,6 +118,7 @@ function visionTap(action: VisionTapAction, runtimePath: string, description: st
       THRESHOLD: String(action.threshold),
       OCCURRENCE: String(action.occurrence),
       ACTION: description,
+      STEP: String(step),
     }),
     { tapOn: { point: "${output.seenflow.tapX}%,${output.seenflow.tapY}%" } },
   ];
@@ -96,6 +130,7 @@ function transition(
   timeout: number,
   runtimePath: string,
   description: string,
+  step: number,
 ): unknown[] {
   const state = effect.kind === "visibleText" ? "visible" : "not-visible";
   return [
@@ -105,6 +140,7 @@ function transition(
             TEXT: effect.text,
             STATE: inverse(state),
             ACTION: description,
+            STEP: String(step),
           }),
         ]
       : []),
@@ -114,6 +150,7 @@ function transition(
       STATE: state,
       TIMEOUT: String(timeout),
       ACTION: description,
+      STEP: String(step),
     }),
   ];
 }

@@ -1,9 +1,17 @@
-import type { ExpectedVisualEffect, MatchMode, TapOnAction, VisionTapAction } from "./actions.js";
+import type {
+  ExpectedVisualEffect,
+  MatchMode,
+  NativeEffectAction,
+  TapOnAction,
+  VisionTapAction,
+} from "./actions.js";
 import { failAt } from "./errors.js";
 import type { ParsedCommand, SourceLocation } from "./parser.js";
 
 const matchModes = new Set<MatchMode>(["exact", "contains", "fuzzy"]);
 const effectKeys = ["visibleText", "notVisibleText"] as const;
+const nativeEffectCommands = ["swipe", "longPressOn"] as const;
+type NativeEffectCommand = (typeof nativeEffectCommands)[number];
 
 export function effectsRequired(config: unknown): boolean {
   return !(
@@ -67,6 +75,39 @@ export function hasExpectedEffect(command: ParsedCommand): boolean {
   return isRecord(command.value) && isRecord(command.value.tapOn) && Object.hasOwn(command.value.tapOn, "expect");
 }
 
+export function nativeEffectCommand(command: ParsedCommand): NativeEffectCommand | undefined {
+  if (!isRecord(command.value)) return undefined;
+  return nativeEffectCommands.find((name) => Object.hasOwn(command.value as object, name));
+}
+
+export function hasNativeExpectedEffect(
+  command: ParsedCommand,
+  name: NativeEffectCommand,
+): boolean {
+  return (
+    isRecord(command.value) &&
+    isRecord(command.value[name]) &&
+    Object.hasOwn(command.value[name], "expect")
+  );
+}
+
+export function parseNativeEffect(
+  command: ParsedCommand,
+  name: NativeEffectCommand,
+): NativeEffectAction {
+  if (!isRecord(command.value) || !isRecord(command.value[name])) {
+    failAt(command.location, `${name} must be an object to use expect.`);
+  }
+  const { expect, ...value } = command.value[name];
+  return {
+    kind: "nativeEffect",
+    location: command.location,
+    command: name,
+    value,
+    expect: effect(expect, command.location, name),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -110,7 +151,11 @@ function timeout(value: unknown, location: SourceLocation): number {
   return value;
 }
 
-function effect(value: unknown, location: SourceLocation, action: "tapOn" | "visionTap"): ExpectedVisualEffect {
+function effect(
+  value: unknown,
+  location: SourceLocation,
+  action: "tapOn" | "visionTap" | NativeEffectCommand,
+): ExpectedVisualEffect {
   if (!isRecord(value)) failAt(location, `${action}.expect must be an object.`);
 
   const selected = effectKeys.filter((key) => value[key] !== undefined);

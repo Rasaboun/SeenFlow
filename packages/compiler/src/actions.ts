@@ -26,13 +26,21 @@ export interface TapOnAction {
   expect: ExpectedVisualEffect;
 }
 
+export interface NativeEffectAction {
+  kind: "nativeEffect";
+  location: SourceLocation;
+  command: "swipe" | "longPressOn";
+  value: Record<string, unknown>;
+  expect: ExpectedVisualEffect;
+}
+
 export interface MaestroAction {
   kind: "maestro";
   location: SourceLocation;
   value: unknown;
 }
 
-export type FlowAction = MaestroAction | TapOnAction | VisionTapAction;
+export type FlowAction = MaestroAction | NativeEffectAction | TapOnAction | VisionTapAction;
 
 export interface CompilerWarning {
   location: SourceLocation;

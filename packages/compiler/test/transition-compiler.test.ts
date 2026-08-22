@@ -38,6 +38,7 @@ describe("compileFlow", () => {
             TEXT: "Saved",
             STATE: "not-visible",
             ACTION: 'tapOn {"id":"save-button","retryTapIfNoChange":true}',
+            STEP: "1",
           },
         },
       },
@@ -50,6 +51,7 @@ describe("compileFlow", () => {
             STATE: "visible",
             TIMEOUT: "7000",
             ACTION: 'tapOn {"id":"save-button","retryTapIfNoChange":true}',
+            STEP: "1",
           },
         },
       },
@@ -68,7 +70,7 @@ describe("compileFlow", () => {
       {
         runScript: {
           file: ".seenflow/runtime/assert-visual.js",
-          env: { TEXT: "Loading...", STATE: "visible", ACTION: 'visionTap "Save"' },
+          env: { TEXT: "Loading...", STATE: "visible", ACTION: 'visionTap "Save"', STEP: "1" },
         },
       },
       {
@@ -80,6 +82,7 @@ describe("compileFlow", () => {
             THRESHOLD: "0.85",
             OCCURRENCE: "0",
             ACTION: 'visionTap "Save"',
+            STEP: "1",
           },
         },
       },
@@ -92,6 +95,7 @@ describe("compileFlow", () => {
             STATE: "not-visible",
             TIMEOUT: "7000",
             ACTION: 'visionTap "Save"',
+            STEP: "1",
           },
         },
       },
@@ -121,6 +125,7 @@ describe("compileFlow", () => {
             THRESHOLD: "0.9",
             OCCURRENCE: "2",
             ACTION: 'visionTap "Home"',
+            STEP: "1",
           },
         },
       },
@@ -133,6 +138,7 @@ describe("compileFlow", () => {
             STATE: "visible",
             TIMEOUT: "1200",
             ACTION: 'visionTap "Home"',
+            STEP: "1",
           },
         },
       },
@@ -172,6 +178,71 @@ describe("compileFlow", () => {
       { runScript: { file: "../runtime/find-text.js" } },
       { tapOn: expect.anything() },
       { runScript: { file: "../runtime/wait-visual.js" } },
+    ]);
+  });
+
+  test("compiles swipe and longPressOn through visual transitions", () => {
+    const result = compile([
+      "- swipe:",
+      "    direction: UP",
+      "    waitToSettleTimeoutMs: 500",
+      "    expect:",
+      "      visibleText: Orders",
+      "- longPressOn:",
+      "    point: 50%,50%",
+      "    expect:",
+      "      visibleText: Actions",
+    ]);
+
+    expect(documents(result.yaml)[1]).toEqual([
+      {
+        runScript: {
+          file: ".seenflow/runtime/assert-visual.js",
+          env: {
+            TEXT: "Orders",
+            STATE: "not-visible",
+            ACTION: 'swipe {"direction":"UP","waitToSettleTimeoutMs":500}',
+            STEP: "1",
+          },
+        },
+      },
+      { swipe: { direction: "UP", waitToSettleTimeoutMs: 500 } },
+      {
+        runScript: {
+          file: ".seenflow/runtime/wait-visual.js",
+          env: {
+            TEXT: "Orders",
+            STATE: "visible",
+            TIMEOUT: "7000",
+            ACTION: 'swipe {"direction":"UP","waitToSettleTimeoutMs":500}',
+            STEP: "1",
+          },
+        },
+      },
+      {
+        runScript: {
+          file: ".seenflow/runtime/assert-visual.js",
+          env: {
+            TEXT: "Actions",
+            STATE: "not-visible",
+            ACTION: 'longPressOn {"point":"50%,50%"}',
+            STEP: "2",
+          },
+        },
+      },
+      { longPressOn: { point: "50%,50%" } },
+      {
+        runScript: {
+          file: ".seenflow/runtime/wait-visual.js",
+          env: {
+            TEXT: "Actions",
+            STATE: "visible",
+            TIMEOUT: "7000",
+            ACTION: 'longPressOn {"point":"50%,50%"}',
+            STEP: "2",
+          },
+        },
+      },
     ]);
   });
 });
