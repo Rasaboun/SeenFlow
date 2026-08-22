@@ -13,9 +13,10 @@ def save_failure_artifacts(
     items: list[OCRItem],
     selector: dict[str, object],
     candidates: list[OCRMatch],
+    details: dict[str, object] | None = None,
 ) -> dict[str, str]:
     directory = root / datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
-    return save_visual_artifacts(directory, image, items, selector, candidates)
+    return save_visual_artifacts(directory, image, items, selector, candidates, details)
 
 
 def save_visual_artifacts(
@@ -24,6 +25,7 @@ def save_visual_artifacts(
     items: list[OCRItem],
     selector: dict[str, object],
     candidates: list[OCRMatch],
+    details: dict[str, object] | None = None,
 ) -> dict[str, str]:
     directory.mkdir(parents=True, exist_ok=True)
     screenshot = directory / "screenshot.png"
@@ -39,20 +41,16 @@ def save_visual_artifacts(
         color = "#ffbf00" if box in candidate_boxes else "#ff3b30"
         draw.rectangle((box.x, box.y, box.x + box.width, box.y + box.height), outline=color, width=3)
     marked.save(annotated, "PNG")
-    ocr.write_text(
-        json.dumps(
-            {
-                "selector": selector,
-                "detections": [_item_json(item) for item in items],
-                "candidates": [
-                    {**_item_json(match.item), "score": match.score} for match in candidates
-                ],
-            },
-            indent=2,
-            ensure_ascii=False,
-        )
-        + "\n"
-    )
+    payload = {
+        "selector": selector,
+        "detections": [_item_json(item) for item in items],
+        "candidates": [
+            {**_item_json(match.item), "score": match.score} for match in candidates
+        ],
+    }
+    if details is not None:
+        payload["spatial"] = details
+    ocr.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
     return {
         "screenshot": str(screenshot),
         "annotated": str(annotated),

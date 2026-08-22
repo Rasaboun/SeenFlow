@@ -18,8 +18,13 @@ from seenflow.capture.base import CaptureError, ScreenshotCapture
 from seenflow.capture.ios import IOSSimulatorCapture
 from seenflow.diagnostics import save_failure_artifacts
 from seenflow.journal import VisualJournal
-from seenflow.matching import MatchSelectionError, find_matches, select_match
-from seenflow.models import BoundingBox, OCRItem
+from seenflow.matching import (
+    MatchSelectionError,
+    evaluate_spatial_matches,
+    find_matches,
+    select_match,
+)
+from seenflow.models import BoundingBox, OCRItem, OCRMatch, SpatialEvaluation
 from seenflow.ocr.paddle import PaddleOCRProvider
 from seenflow.ocr.provider import OCRProvider
 
@@ -35,11 +40,36 @@ class DetectRequest(BaseModel):
     device_id: str = Field(alias="deviceId", pattern=r"^[A-Za-z0-9._:-]{1,128}$")
 
 
+class AnchorSelector(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    text: str = Field(min_length=1)
+    match: Literal["exact", "contains", "fuzzy"] = "exact"
+    threshold: float = Field(default=0.85, ge=0, le=1)
+    occurrence: int = Field(default=0, ge=0)
+
+    @field_validator("text")
+    @classmethod
+    def reject_blank_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("text must not be blank")
+        return value
+
+
+class SpatialSelector(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    relation: Literal["near", "above", "below", "leftOf", "rightOf"]
+    anchor: AnchorSelector
+    max_distance: float = Field(alias="maxDistance", gt=0, le=100)
+
+
 class FindRequest(DetectRequest):
     text: str = Field(min_length=1)
     match: Literal["exact", "contains", "fuzzy"] = "exact"
     threshold: float = Field(default=0.85, ge=0, le=1)
     occurrence: int = Field(default=0, ge=0)
+    spatial: SpatialSelector | None = None
     diagnostics: bool = False
     context: Literal["target", "precondition", "postcondition"] | None = None
     state: Literal["visible", "not-visible"] | None = None
@@ -193,7 +223,14 @@ def create_app(
             "threshold": request.threshold,
             "occurrence": request.occurrence,
         }
-        def record_journal(found: bool) -> dict[str, str] | None:
+        if request.spatial is not None:
+            selector["spatial"] = request.spatial.model_dump(by_alias=True)
+
+        def record_journal(
+            found: bool,
+            candidates: list[OCRMatch] = matches,
+            details: dict[str, object] | None = None,
+        ) -> dict[str, str] | None:
             if not journaled:
                 return None
             return app.state.journal.record(
@@ -206,47 +243,121 @@ def create_app(
                 image=image,
                 items=items,
                 selector=selector,
-                candidates=matches,
+                candidates=candidates,
                 found=found,
                 capture_ms=capture_ms,
                 ocr_ms=ocr_ms,
+                details=details,
             )
 
-        if not matches and request.occurrence == 0:
-            journal_artifacts = record_journal(False)
+        def spatial_failure(
+            reason: str,
+            details: dict[str, object],
+            candidates: list[OCRMatch] = matches,
+        ) -> dict[str, object]:
+            details["reason"] = reason
+            journal_artifacts = record_journal(False, candidates, details)
             artifacts = journal_artifacts or save_failure_artifacts(
-                app.state.artifacts_dir, image, items, selector, matches
+                app.state.artifacts_dir,
+                image,
+                items,
+                selector,
+                candidates,
+                details,
             )
             return {
                 "found": False,
                 "query": request.text,
-                "matches": [],
-                "detections": [item_json(item) for item in items],
-                "artifacts": artifacts,
-            }
-        try:
-            match = select_match(matches, request.occurrence)
-        except MatchSelectionError as error:
-            journal_artifacts = record_journal(False)
-            artifacts = journal_artifacts or save_failure_artifacts(
-                app.state.artifacts_dir, image, items, selector, error.matches
-            )
-            return {
-                "found": False,
-                "query": request.text,
-                "matches": [
-                    {**item_json(candidate.item), "score": candidate.score}
-                    for candidate in error.matches
-                ],
+                "matches": [match_json(candidate) for candidate in candidates],
                 "detections": [item_json(item) for item in items],
                 "artifacts": artifacts,
                 "error": {
                     "code": "ACTION_TARGET_NOT_FOUND",
-                    "message": str(error),
+                    "reason": reason,
                 },
             }
 
-        journal_artifacts = record_journal(True)
+        spatial_details: dict[str, object] | None = None
+        match: OCRMatch
+        if request.spatial is not None:
+            spatial = request.spatial
+            anchor_matches = find_matches(
+                items,
+                spatial.anchor.text,
+                spatial.anchor.match,
+                spatial.anchor.threshold,
+            )
+            if not anchor_matches:
+                return spatial_failure("ANCHOR_TEXT_NOT_FOUND", {"anchor": None, "candidates": []})
+            try:
+                anchor = select_match(anchor_matches, spatial.anchor.occurrence)
+            except MatchSelectionError:
+                return spatial_failure(
+                    "ANCHOR_OCCURRENCE_NOT_FOUND",
+                    {"anchor": None, "candidates": []},
+                    anchor_matches,
+                )
+            if not matches:
+                return spatial_failure(
+                    "TARGET_TEXT_NOT_FOUND",
+                    {"anchor": match_json(anchor), "candidates": []},
+                )
+            evaluations = evaluate_spatial_matches(
+                matches,
+                anchor,
+                spatial.relation,
+                spatial.max_distance,
+                image.width,
+                image.height,
+            )
+            spatial_details = {
+                "anchor": match_json(anchor),
+                "candidates": [spatial_evaluation_json(entry) for entry in evaluations],
+            }
+            directional = [entry for entry in evaluations if entry.direction_matches]
+            if not directional:
+                return spatial_failure("DIRECTION_MISMATCH", spatial_details)
+            valid = [entry.match for entry in directional if entry.within_distance]
+            if not valid:
+                return spatial_failure("MAX_DISTANCE_EXCEEDED", spatial_details)
+            try:
+                match = select_match(valid, request.occurrence)
+            except MatchSelectionError:
+                return spatial_failure("TARGET_OCCURRENCE_NOT_FOUND", spatial_details, valid)
+            spatial_details["reason"] = "MATCHED"
+        else:
+            if not matches and request.occurrence == 0:
+                journal_artifacts = record_journal(False)
+                artifacts = journal_artifacts or save_failure_artifacts(
+                    app.state.artifacts_dir, image, items, selector, matches
+                )
+                return {
+                    "found": False,
+                    "query": request.text,
+                    "matches": [],
+                    "detections": [item_json(item) for item in items],
+                    "artifacts": artifacts,
+                }
+            try:
+                match = select_match(matches, request.occurrence)
+            except MatchSelectionError as error:
+                journal_artifacts = record_journal(False)
+                artifacts = journal_artifacts or save_failure_artifacts(
+                    app.state.artifacts_dir, image, items, selector, error.matches
+                )
+                return {
+                    "found": False,
+                    "query": request.text,
+                    "matches": [match_json(candidate) for candidate in error.matches],
+                    "detections": [item_json(item) for item in items],
+                    "artifacts": artifacts,
+                    "error": {
+                        "code": "ACTION_TARGET_NOT_FOUND",
+                        "message": str(error),
+                    },
+                }
+
+        journal_artifacts = record_journal(True, details=spatial_details)
 
         box = match.item.box
         center_x = box.x + box.width / 2
@@ -372,6 +483,25 @@ def item_json(item: OCRItem) -> dict[str, object]:
 
 def box_json(box: BoundingBox) -> dict[str, int]:
     return {"x": box.x, "y": box.y, "width": box.width, "height": box.height}
+
+
+def match_json(match: OCRMatch) -> dict[str, object]:
+    return {**item_json(match.item), "score": match.score}
+
+
+def spatial_evaluation_json(evaluation: SpatialEvaluation) -> dict[str, object]:
+    reason = None
+    if not evaluation.direction_matches:
+        reason = "DIRECTION_MISMATCH"
+    elif not evaluation.within_distance:
+        reason = "MAX_DISTANCE_EXCEEDED"
+    return {
+        **match_json(evaluation.match),
+        "distancePercent": round(evaluation.distance_percent, 4),
+        "directionMatches": evaluation.direction_matches,
+        "withinDistance": evaluation.within_distance,
+        "rejectionReason": reason,
+    }
 
 
 def main() -> None:

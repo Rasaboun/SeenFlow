@@ -59,23 +59,24 @@ class VisualJournal:
         found: bool,
         capture_ms: float,
         ocr_ms: float,
+        details: dict[str, object] | None = None,
     ) -> dict[str, str]:
         directory = self._entry_directory(run_id, step, phase, attempt, action, state)
-        artifacts = save_visual_artifacts(directory, image, items, selector, candidates)
-        self._append(
-            run_id,
-            {
-                "step": step,
-                "phase": phase,
-                "attempt": attempt,
-                "action": action,
-                "state": state,
-                "found": found,
-                "captureMs": capture_ms,
-                "ocrMs": ocr_ms,
-                "artifacts": artifacts,
-            },
-        )
+        artifacts = save_visual_artifacts(directory, image, items, selector, candidates, details)
+        entry: dict[str, object] = {
+            "step": step,
+            "phase": phase,
+            "attempt": attempt,
+            "action": action,
+            "state": state,
+            "found": found,
+            "captureMs": capture_ms,
+            "ocrMs": ocr_ms,
+            "artifacts": artifacts,
+        }
+        if details is not None:
+            entry["spatial"] = details
+        self._append(run_id, entry)
         return artifacts
 
     def record_error(

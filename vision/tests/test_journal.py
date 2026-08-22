@@ -91,3 +91,34 @@ def test_journal_retains_captured_image_when_ocr_fails(tmp_path: Path) -> None:
         "code": "OCR_RUNTIME_FAILED",
         "message": "model failed",
     }
+
+
+def test_journal_records_spatial_evidence_in_manifest_and_ocr_json(tmp_path: Path) -> None:
+    journal = VisualJournal(tmp_path)
+    details = {
+        "reason": "DIRECTION_MISMATCH",
+        "anchor": {"text": "Chicken Curry"},
+        "candidates": [{"text": "Edit", "distancePercent": 12.5}],
+    }
+
+    paths = journal.record(
+        run_id="run-spatial",
+        step=1,
+        phase="target",
+        attempt=1,
+        action='visionTap "Edit" rightOf "Chicken Curry"',
+        state=None,
+        image=Image.new("RGB", (200, 100), "white"),
+        items=[],
+        selector={"text": "Edit"},
+        candidates=[],
+        found=False,
+        capture_ms=10.0,
+        ocr_ms=20.0,
+        details=details,
+    )
+
+    manifest = json.loads((tmp_path / "run-spatial" / "manifest.json").read_text())
+    assert manifest["entries"][0]["spatial"] == details
+    ocr_json = json.loads(Path(paths["ocr"]).read_text())
+    assert ocr_json["spatial"] == details

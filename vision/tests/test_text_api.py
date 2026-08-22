@@ -58,6 +58,28 @@ def client(
     return TestClient(app, headers={"Authorization": f"Bearer {TOKEN}"}), capture
 
 
+def ocr(text: str, confidence: float, center_x: int, center_y: int) -> OCRItem:
+    return OCRItem(text, confidence, BoundingBox(center_x - 5, center_y - 5, 10, 10))
+
+
+def spatial(
+    relation: str = "rightOf",
+    *,
+    anchor_occurrence: int = 0,
+    max_distance: float = 100,
+) -> dict[str, object]:
+    return {
+        "relation": relation,
+        "anchor": {
+            "text": "Chicken Curry",
+            "match": "exact",
+            "threshold": 0.85,
+            "occurrence": anchor_occurrence,
+        },
+        "maxDistance": max_distance,
+    }
+
+
 def test_detect_returns_screen_dimensions_and_all_ocr_items() -> None:
     provider = FakeProvider([OCRItem("Save", 0.97, BoundingBox(80, 40, 40, 20))])
     api, capture = client(provider)
@@ -113,6 +135,139 @@ def test_find_returns_deterministic_match_and_percentage_coordinates() -> None:
             "normalized": {"x": 70.0, "y": 60.0},
         },
     }
+
+
+@pytest.mark.parametrize(
+    ("relation", "target_center"),
+    [
+        ("near", (150, 50)),
+        ("rightOf", (150, 50)),
+        ("leftOf", (50, 50)),
+        ("above", (100, 20)),
+        ("below", (100, 80)),
+    ],
+)
+def test_find_resolves_every_spatial_relationship_from_one_analysis(
+    relation: str, target_center: tuple[int, int]
+) -> None:
+    provider = FakeProvider(
+        [
+            ocr("Chicken Curry", 0.99, 100, 50),
+            ocr("Edit", 0.90, 20, 80),
+            ocr("Edit", 0.95, *target_center),
+        ]
+    )
+    api, capture = client(provider)
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Edit",
+            "spatial": spatial(relation),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["found"] is True
+    assert response.json()["match"]["center"] == {
+        "x": float(target_center[0]),
+        "y": float(target_center[1]),
+    }
+    assert capture.devices == ["ABC-123"]
+    assert provider.calls == 1
+
+
+@pytest.mark.parametrize(
+    "spatial_value",
+    [
+        {**spatial(), "extra": True},
+        {**spatial(), "relation": "diagonal"},
+        {**spatial(), "maxDistance": 0},
+        {**spatial(), "maxDistance": 101},
+        {**spatial(), "anchor": {**spatial()["anchor"], "text": " "}},
+        {**spatial(), "anchor": {**spatial()["anchor"], "match": "nearby"}},
+        {**spatial(), "anchor": {**spatial()["anchor"], "threshold": 1.1}},
+        {**spatial(), "anchor": {**spatial()["anchor"], "occurrence": -1}},
+        {**spatial(), "anchor": {**spatial()["anchor"], "extra": True}},
+    ],
+)
+def test_find_strictly_validates_spatial_selector(spatial_value: dict[str, object]) -> None:
+    api, _capture = client(FakeProvider([]))
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Edit",
+            "spatial": spatial_value,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("items", "spatial_value", "occurrence", "reason"),
+    [
+        ([ocr("Edit", 0.9, 150, 50)], spatial(), 0, "ANCHOR_TEXT_NOT_FOUND"),
+        (
+            [ocr("Chicken Curry", 0.99, 100, 50), ocr("Edit", 0.9, 150, 50)],
+            spatial(anchor_occurrence=1),
+            0,
+            "ANCHOR_OCCURRENCE_NOT_FOUND",
+        ),
+        ([ocr("Chicken Curry", 0.99, 100, 50)], spatial(), 0, "TARGET_TEXT_NOT_FOUND"),
+        (
+            [ocr("Chicken Curry", 0.99, 100, 50), ocr("Edit", 0.9, 50, 50)],
+            spatial(),
+            0,
+            "DIRECTION_MISMATCH",
+        ),
+        (
+            [ocr("Chicken Curry", 0.99, 100, 50), ocr("Edit", 0.9, 150, 50)],
+            spatial(max_distance=1),
+            0,
+            "MAX_DISTANCE_EXCEEDED",
+        ),
+        (
+            [ocr("Chicken Curry", 0.99, 100, 50), ocr("Edit", 0.9, 150, 50)],
+            spatial(),
+            1,
+            "TARGET_OCCURRENCE_NOT_FOUND",
+        ),
+    ],
+)
+def test_find_distinguishes_spatial_failures(
+    items: list[OCRItem],
+    spatial_value: dict[str, object],
+    occurrence: int,
+    reason: str,
+    tmp_path: Path,
+) -> None:
+    api, _capture = client(FakeProvider(items), artifacts_dir=tmp_path)
+
+    response = api.post(
+        "/v1/text/find",
+        json={
+            "platform": "ios",
+            "deviceId": "ABC-123",
+            "text": "Edit",
+            "occurrence": occurrence,
+            "spatial": spatial_value,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["found"] is False
+    assert response.json()["error"] == {
+        "code": "ACTION_TARGET_NOT_FOUND",
+        "reason": reason,
+    }
+    diagnostic = json.loads(Path(response.json()["artifacts"]["ocr"]).read_text())
+    assert diagnostic["spatial"]["reason"] == reason
 
 
 def test_find_returns_absent_and_captures_fresh_screens() -> None:
