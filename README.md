@@ -61,7 +61,9 @@ Seenflow uses PaddleOCR's ONNX Runtime engine by default. This is CPU inference,
 SEENFLOW_OCR_ENGINE=paddle seenflow test flow.yaml
 ```
 
-On the checked-in merged-row fixture, five warm runs produced medians of `83.9ms` with ONNX Runtime and `271.8ms` with Paddle while returning identical text, boxes, word spans, and provenance. Actual device screenshots also include capture and IPC time.
+On the checked-in merged-row fixture, five warm runs produced medians of `83.9ms` with ONNX Runtime and `271.8ms` with Paddle. That is `69.1%` lower OCR latency, or approximately `3.24×` faster, while returning identical text, boxes, word spans, and provenance.
+
+The Apple Maps acceptance flow also passed end to end. Its individual OCR stages took approximately `0.24–0.50s` with ONNX Runtime, compared with `1.2–1.7s` in the earlier Paddle run. Screenshot capture and IPC are separate, variable costs and now account for a larger share of total action latency. These measurements demonstrate CPU inference improvements; ONNX Runtime is not using Apple Metal or GPU acceleration here.
 
 ## Compile
 
