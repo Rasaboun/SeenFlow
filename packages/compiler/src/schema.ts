@@ -2,6 +2,8 @@ import type {
   ExpectedVisualEffect,
   MatchMode,
   NativeEffectAction,
+  SpatialConstraint,
+  SpatialRelation,
   TapOnAction,
   VisionTapAction,
 } from "./actions.js";
@@ -11,6 +13,7 @@ import type { ParsedCommand, SourceLocation } from "./parser.js";
 const matchModes = new Set<MatchMode>(["exact", "contains", "fuzzy"]);
 const effectKeys = ["visibleText", "notVisibleText"] as const;
 const nativeEffectCommands = ["swipe", "longPressOn"] as const;
+const spatialRelations = ["near", "above", "below", "leftOf", "rightOf"] as const satisfies readonly SpatialRelation[];
 type NativeEffectCommand = (typeof nativeEffectCommands)[number];
 
 export function effectsRequired(config: unknown): boolean {
@@ -46,6 +49,7 @@ export function parseVisionTap(command: ParsedCommand): VisionTapAction {
     occurrence: occurrence(input.occurrence, command.location),
     timeout: timeout(input.timeout, command.location),
     expect: effect(input.expect, command.location, "visionTap"),
+    ...spatial(input, command.location),
   };
 }
 
@@ -119,28 +123,63 @@ function requiredText(value: unknown, location: SourceLocation, name: string): s
   return value;
 }
 
-function match(value: unknown, location: SourceLocation): MatchMode {
+function match(value: unknown, location: SourceLocation, name = "visionTap.match"): MatchMode {
   if (value === undefined) return "exact";
   if (typeof value !== "string" || !matchModes.has(value as MatchMode)) {
-    failAt(location, "visionTap.match must be exact, contains, or fuzzy.");
+    failAt(location, `${name} must be exact, contains, or fuzzy.`);
   }
   return value as MatchMode;
 }
 
-function threshold(value: unknown, location: SourceLocation): number {
+function threshold(value: unknown, location: SourceLocation, name = "visionTap.threshold"): number {
   if (value === undefined) return 0.85;
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
-    failAt(location, "visionTap.threshold must be a number between 0 and 1.");
+    failAt(location, `${name} must be a number between 0 and 1.`);
   }
   return value;
 }
 
-function occurrence(value: unknown, location: SourceLocation): number {
+function occurrence(value: unknown, location: SourceLocation, name = "visionTap.occurrence"): number {
   if (value === undefined) return 0;
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    failAt(location, "visionTap.occurrence must be a non-negative integer.");
+    failAt(location, `${name} must be a non-negative integer.`);
   }
   return value;
+}
+
+function spatial(
+  input: Record<string, unknown>,
+  location: SourceLocation,
+): { spatial?: SpatialConstraint } {
+  const selected = spatialRelations.filter((relation) => Object.hasOwn(input, relation));
+  if (selected.length === 0) return {};
+  if (selected.length !== 1) {
+    failAt(location, "visionTap must contain at most one spatial relationship.");
+  }
+
+  const relation = selected[0];
+  const value = input[relation];
+  if (!isRecord(value)) failAt(location, `visionTap.${relation} must be an object.`);
+  const allowed = new Set(["text", "match", "threshold", "occurrence", "maxDistance"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    failAt(location, `visionTap.${relation} contains an unsupported property.`);
+  }
+  const distance = value.maxDistance;
+  if (typeof distance !== "number" || !Number.isFinite(distance) || distance <= 0 || distance > 100) {
+    failAt(location, `visionTap.${relation}.maxDistance must be a number greater than 0 and at most 100.`);
+  }
+  return {
+    spatial: {
+      relation,
+      anchor: {
+        text: requiredText(value.text, location, `visionTap.${relation}.text`),
+        match: match(value.match, location, `visionTap.${relation}.match`),
+        threshold: threshold(value.threshold, location, `visionTap.${relation}.threshold`),
+        occurrence: occurrence(value.occurrence, location, `visionTap.${relation}.occurrence`),
+      },
+      maxDistance: distance,
+    },
+  };
 }
 
 function timeout(value: unknown, location: SourceLocation): number {

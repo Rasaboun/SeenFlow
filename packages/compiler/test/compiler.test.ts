@@ -77,6 +77,72 @@ describe("buildFlowAst", () => {
     });
   });
 
+  test("normalizes a spatial anchor selector", () => {
+    const ast = buildFlowAst(
+      flow([
+        "- visionTap:",
+        "    text: Edit",
+        "    rightOf:",
+        "      text: Chicken Curry",
+        "      match: fuzzy",
+        "      threshold: 0.88",
+        "      occurrence: 1",
+        "      maxDistance: 20",
+        "    expect:",
+        "      visibleText: Edit recipe",
+      ]),
+    );
+
+    expect(ast.actions[0]).toMatchObject({
+      kind: "visionTap",
+      spatial: {
+        relation: "rightOf",
+        anchor: {
+          text: "Chicken Curry",
+          match: "fuzzy",
+          threshold: 0.88,
+          occurrence: 1,
+        },
+        maxDistance: 20,
+      },
+    });
+  });
+
+  test.each([
+    [
+      "multiple relationships",
+      [
+        "    near:",
+        "      text: Chicken Curry",
+        "      maxDistance: 20",
+        "    above:",
+        "      text: Chicken Curry",
+        "      maxDistance: 20",
+      ],
+    ],
+    ["blank anchor text", ["    near:", '      text: ""', "      maxDistance: 20"]],
+    ["anchor match", ["    near:", "      text: Chicken Curry", "      match: nearby", "      maxDistance: 20"]],
+    ["anchor threshold", ["    near:", "      text: Chicken Curry", "      threshold: 1.1", "      maxDistance: 20"]],
+    ["anchor occurrence", ["    near:", "      text: Chicken Curry", "      occurrence: -1", "      maxDistance: 20"]],
+    ["fractional anchor occurrence", ["    near:", "      text: Chicken Curry", "      occurrence: 1.5", "      maxDistance: 20"]],
+    ["unknown anchor option", ["    near:", "      text: Chicken Curry", "      maxDistance: 20", "      color: red"]],
+    ["missing maxDistance", ["    near:", "      text: Chicken Curry"]],
+    ["zero maxDistance", ["    near:", "      text: Chicken Curry", "      maxDistance: 0"]],
+    ["large maxDistance", ["    near:", "      text: Chicken Curry", "      maxDistance: 101"]],
+  ])("rejects invalid spatial selector: %s", (_name, spatial) => {
+    expect(() =>
+      buildFlowAst(
+        flow([
+          "- visionTap:",
+          "    text: Edit",
+          ...spatial,
+          "    expect:",
+          "      visibleText: Edit recipe",
+        ]),
+      ),
+    ).toThrow(/flows\/checkout\.yaml:3/);
+  });
+
   const invalidVisionTaps: Array<[string, string[]]> = [
     ["text", ["- visionTap:", "    expect:", "      visibleText: Saved"]],
     ["text", ["- visionTap:", "    text: 12", "    expect:", "      visibleText: Saved"]],
