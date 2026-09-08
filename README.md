@@ -1,4 +1,4 @@
-# seenflow
+# SeenFlow
 
 Deterministic visual selectors and action-effect assertions for Maestro.
 
@@ -34,7 +34,17 @@ The second form:
 3. asks official Maestro to tap the resolved screen percentage;
 4. polls fresh screenshots until `Saved` appears.
 
-If `Saved` is visible before the tap, the flow fails before the action. Use `requireTransition: false` only for an intentionally idempotent action.
+If `Saved` is visible before the tap, the flow fails before the action. For an intentionally idempotent action, disable that precondition inside `expect`:
+
+```yaml
+- visionTap:
+    text: "Save"
+    expect:
+      visibleText: "Saved"
+      requireTransition: false
+```
+
+The post-action check still runs.
 
 ## Requirements
 
@@ -48,6 +58,8 @@ Physical iOS devices and Maestro Cloud are not supported in v0.4.
 ## Install from source
 
 ```bash
+git clone https://github.com/Rasaboun/SeenFlow.git
+cd SeenFlow
 bun install --frozen-lockfile
 uv sync --project vision
 bun link
@@ -61,9 +73,27 @@ Seenflow uses PaddleOCR's ONNX Runtime engine by default. This is CPU inference,
 SEENFLOW_OCR_ENGINE=paddle seenflow test flow.yaml
 ```
 
-On the checked-in merged-row fixture, five warm runs produced medians of `83.9ms` with ONNX Runtime and `271.8ms` with Paddle. That is `69.1%` lower OCR latency, or approximately `3.24×` faster, while returning identical text, boxes, word spans, and provenance.
+## Run your first flow
 
-The Apple Maps acceptance flow also passed end to end. Its individual OCR stages took approximately `0.24–0.50s` with ONNX Runtime, compared with `1.2–1.7s` in the earlier Paddle run. Screenshot capture and IPC are separate, variable costs and now account for a larger share of total action latency. These measurements demonstrate CPU inference improvements; ONNX Runtime is not using Apple Metal or GPU acceleration here.
+Save this as `flow.yaml`, replace `com.example.app` with your installed app's ID, and choose labels that match its UI:
+
+```yaml
+appId: com.example.app
+---
+- launchApp
+- visionTap:
+    text: "Save"
+    expect:
+      visibleText: "Saved"
+```
+
+With your simulator or Android device running:
+
+```bash
+seenflow test flow.yaml --device <DEVICE_ID>
+```
+
+Use an iOS Simulator UDID or an Android `adb` serial for `<DEVICE_ID>`. To try a ready-made app and flow, use the [acceptance fixtures](#acceptance-fixtures) below.
 
 ## Compile
 
@@ -72,7 +102,9 @@ seenflow compile flow.yaml
 seenflow compile flow.yaml --output /tmp/flow.yaml
 ```
 
-The default output is `.seenflow/generated/flow.yaml`. Compilation never runs Maestro and never modifies the source flow. Generated YAML contains only official Maestro commands.
+The default output is `.seenflow/generated/flow.yaml`. Compilation does not run Maestro. Choose an output path different from the input: `--output` overwrites its destination, including the source if you pass the same path.
+
+Generated YAML uses official Maestro commands, including `runScript` calls to the copied SeenFlow runtime scripts. Visual actions still need a running sidecar and its connection settings; use `seenflow test` to manage those automatically.
 
 ## Test
 
@@ -131,7 +163,9 @@ appId: com.example.app
       visibleText: "Actions"
 ```
 
-`visionTap` defaults to exact matching, threshold `0.85`, occurrence `0`, and timeout `7000ms`. Expanded `tapOn`, `swipe`, and `longPressOn` keep all native Maestro properties and use OCR only for their expected effects. Normal and unknown Maestro commands pass through unchanged. Effectless `swipe` and `longPressOn` remain compatible and emit transition-safety warnings; existing `tapOn` strictness is unchanged.
+`visionTap` defaults to exact matching, threshold `0.85`, occurrence `0`, and a post-action timeout of `7000ms`. Expanded `tapOn`, `swipe`, and `longPressOn` keep all native Maestro properties and use OCR only for their expected effects. Other Maestro commands pass through unchanged.
+
+`visionTap` always requires `expect`. Expanded `tapOn` requires it by default; set `seenflow.requireEffects: false` in the flow header to allow expanded taps without effects. Shorthand `tapOn: "Save"`, effectless `swipe`, and effectless `longPressOn` are accepted with warnings. Native action effects have a fixed post-action timeout of `7000ms`.
 
 Spatial `visionTap` supports exactly one of `near`, `above`, `below`, `leftOf`, or `rightOf`. The nested anchor uses the same `match`, `threshold`, and zero-based `occurrence` options, with defaults of `exact`, `0.85`, and `0`. `maxDistance` is required and measures center-to-center distance as a percentage of the screen diagonal.
 
@@ -190,7 +224,21 @@ Both fixture apps draw their labels directly into pixels and hide accessibility 
 
 ## Scope
 
-v0.4 deliberately excludes spatial expected effects, combined spatial relationships, arbitrary regions, custom image segmentation, second-pass OCR refinement, OCR model switching, VLMs/LLMs, image or icon selectors, template matching, video generation, visual regression, Appium, custom gesture implementations, parallel stability runs, physical iOS devices, Maestro Cloud, and changes to Maestro itself. Screenshot capture is the only device operation owned by the sidecar.
+v0.4 matches rendered text using local OCR. It does not match images or icons, perform visual regression, or use VLMs/LLMs. Spatial selectors support one relationship at a time; expected effects check text visibility only.
+
+Supported targets are iOS Simulators and Android devices/emulators on the host platforms listed above. Physical iOS devices and Maestro Cloud are unsupported. Maestro performs the interactions; the sidecar captures and analyzes screenshots. Stability runs execute sequentially.
+
+## OCR performance
+
+ONNX Runtime is the default CPU inference engine. A recorded comparison on the checked-in merged-row fixture measured `83.9ms` median OCR time with ONNX Runtime versus `271.8ms` with Paddle across five warm runs: approximately `3.24×` faster, with identical text, boxes, word spans, and provenance. The hardware was not recorded alongside these results, so treat them as illustrative rather than a portable performance guarantee. Capture, startup, and IPC costs are excluded.
+
+Reproduce the comparison on your machine from the repository root:
+
+```bash
+uv run --project vision python vision/benchmarks/ocr_engines.py vision/tests/fixtures/spatial-merged-row.png
+```
+
+The script warms up each engine, measures five OCR calls per engine, and reports durations and whether the extracted geometry and text agree.
 
 ## Development
 
