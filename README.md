@@ -240,6 +240,10 @@ uv run --project vision python vision/benchmarks/ocr_engines.py vision/tests/fix
 
 The script warms up each engine, measures five OCR calls per engine, and reports durations and whether the extracted geometry and text agree.
 
+## Related reading
+
+Shopify Engineering's [How we raised mobile end-to-end test stability to 98%](https://shopify.engineering/mobile-e2e-testing) describes visual targeting, assertions checked before and after actions, and repeated runs to measure stability—the same principles behind SeenFlow's OCR selectors, transition checks, and stability mode. Shopify's reported 98% result applies to its own test suite.
+
 ## Development
 
 ```bash
