@@ -93,6 +93,7 @@ def test_paddle_provider_explicit_engine_overrides_environment(monkeypatch) -> N
     )
 
     assert "engine" not in initializations[0]
+    assert initializations[0]["enable_mkldnn"] is False
 
 
 def test_paddle_provider_rejects_unknown_engine(monkeypatch) -> None:

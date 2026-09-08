@@ -41,6 +41,9 @@ class PaddleOCRProvider:
         )
         if selected_engine == "onnxruntime":
             options["engine"] = selected_engine
+        else:
+            # Paddle 3.3 oneDNN fails on PP-OCRv6 operators on Linux x64.
+            options["enable_mkldnn"] = False
         try:
             self._engine = factory(**options)
         except Exception as error:
