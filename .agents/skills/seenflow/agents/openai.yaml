@@ -1,0 +1,4 @@
+interface:
+  display_name: "SeenFlow"
+  short_description: "Write and troubleshoot reliable SeenFlow tests"
+  default_prompt: "Use $seenflow to help me write and run a SeenFlow test."
