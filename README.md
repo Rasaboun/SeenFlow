@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="SeenFlow logo" width="160">
+</p>
+
 # SeenFlow
 
 Deterministic visual selectors and action-effect assertions for Maestro.
