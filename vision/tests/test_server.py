@@ -1,7 +1,10 @@
+from unittest.mock import Mock
+
 import pytest
 from fastapi.testclient import TestClient
 
-from seenflow.server import HOST, create_app
+from seenflow import server
+from seenflow.server import create_app
 
 
 TOKEN = "test-session-token"
@@ -35,8 +38,17 @@ def test_empty_session_tokens_are_rejected() -> None:
         create_app("", lambda: object())
 
 
-def test_server_binds_to_localhost_only() -> None:
-    assert HOST == "127.0.0.1"
+def test_server_startup_passes_localhost_to_uvicorn(monkeypatch) -> None:
+    sidecar = app()
+    run = Mock()
+    monkeypatch.setenv("SEENFLOW_PORT", "43210")
+    monkeypatch.setenv("SEENFLOW_SESSION_TOKEN", TOKEN)
+    monkeypatch.setattr(server, "create_app", Mock(return_value=sidecar))
+    monkeypatch.setattr(server.uvicorn, "run", run)
+
+    server.main()
+
+    run.assert_called_once_with(sidecar, host="127.0.0.1", port=43210)
 
 
 def test_sidecar_initializes_one_ocr_provider_at_startup() -> None:
