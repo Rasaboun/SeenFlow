@@ -50,6 +50,16 @@ If `Saved` is visible before the tap, the flow fails before the action. For an i
 
 The post-action check still runs.
 
+## Why visual selectors
+
+- Tests are faster to write. You look at the screen, see `Save`, and write `Save`. No inspector, no digging through the component tree.
+- Test IDs test the code, not the user. A node can exist while the user sees nothing.
+- No selectors to maintain. Test IDs rot every time someone refactors.
+- Failures explain themselves. Every visual failure keeps the screenshot, an annotated copy showing every OCR box, and the JSON of what was searched for and where it resolved.
+- Agents can write flows from the screen alone, without reading the codebase.
+
+These are the trade-offs behind the approach, not a claim that visual selectors replace accessibility-based ones. Use `visionTap` where rendered text is the truth, and native Maestro selectors everywhere else. See [Related reading](#related-reading).
+
 ## Requirements
 
 - macOS with an iOS Simulator, or macOS/Linux with `adb` for Android;
