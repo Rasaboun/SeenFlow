@@ -1,25 +1,18 @@
 import json
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image
 
 from seenflow.diagnostics import save_visual_artifacts
 from seenflow.models import OCRItem, OCRMatch
+from seenflow.application.contracts import DeviceContext, Selection, SpatialEvidence
+from seenflow.serialization import spatial_json
 
 
 _RUN_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _PHASES = {"precondition", "target", "postcondition", "execution-failure"}
 _STATES = {"visible", "not-visible", None}
-
-
-@dataclass(frozen=True)
-class DeviceContext:
-    platform: str
-    device_id: str
-    step: int
-    action: str
 
 
 class VisualJournal:
@@ -54,13 +47,14 @@ class VisualJournal:
         state: str | None,
         image: Image.Image,
         items: list[OCRItem],
-        selector: dict[str, object],
+        selector: Selection | dict[str, object] | None,
         candidates: list[OCRMatch],
         found: bool,
         capture_ms: float,
         ocr_ms: float,
-        details: dict[str, object] | None = None,
+        details: SpatialEvidence | dict[str, object] | None = None,
     ) -> dict[str, str]:
+        details = spatial_json(details)
         directory = self._entry_directory(run_id, step, phase, attempt, action, state)
         artifacts = save_visual_artifacts(directory, image, items, selector, candidates, details)
         entry: dict[str, object] = {

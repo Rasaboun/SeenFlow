@@ -1,18 +1,12 @@
-import re
 import subprocess
 from collections.abc import Callable, Sequence
-from typing import Protocol
+from io import BytesIO
 
+from PIL import Image, UnidentifiedImageError
 
-_DEVICE_ID = re.compile(r"[A-Za-z0-9._:-]{1,128}")
-
-
-class CaptureError(RuntimeError):
-    pass
-
-
-class ScreenshotCapture(Protocol):
-    def capture(self, device_id: str) -> bytes: ...
+from seenflow.application.errors import CaptureFailed as CaptureError
+from seenflow.application.ports import ScreenshotCapture as ScreenshotCapture
+from seenflow.application.contracts import validate_device_id as validate_device_id
 
 
 class ProcessRunner:
@@ -39,7 +33,10 @@ class ProcessRunner:
             raise CaptureError(detail) from error
 
 
-def validate_device_id(device_id: str) -> str:
-    if _DEVICE_ID.fullmatch(device_id) is None:
-        raise ValueError("invalid device ID")
-    return device_id
+def decode_screenshot(screenshot: bytes) -> Image.Image:
+    try:
+        image = Image.open(BytesIO(screenshot))
+        image.load()
+        return image
+    except (OSError, UnidentifiedImageError, ValueError) as error:
+        raise CaptureError(str(error)) from error

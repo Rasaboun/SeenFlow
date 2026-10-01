@@ -1,20 +1,7 @@
 import { isSeq, LineCounter, parseAllDocuments, type Node } from "yaml";
 
-export interface SourceLocation {
-  file: string;
-  line: number;
-  column: number;
-}
-
-export interface ParsedCommand {
-  value: unknown;
-  location: SourceLocation;
-}
-
-export interface ParsedFlow {
-  config: unknown;
-  commands: ParsedCommand[];
-}
+import type { ParsedFlow, SourceLocation } from "./flow.js";
+export type { ParsedCommand, ParsedFlow, SourceLocation } from "./flow.js";
 
 export function parseFlow(source: string, file: string): ParsedFlow {
   const lineCounter = new LineCounter();

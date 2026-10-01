@@ -8,7 +8,7 @@ import type {
   VisionTapAction,
 } from "./actions.js";
 import { failAt } from "./errors.js";
-import type { ParsedCommand, SourceLocation } from "./parser.js";
+import type { ParsedCommand, SourceLocation } from "./flow.js";
 
 const matchModes = new Set<MatchMode>(["exact", "contains", "fuzzy"]);
 const effectKeys = ["visibleText", "notVisibleText"] as const;

@@ -258,6 +258,23 @@ The script warms up each engine, measures five OCR calls per engine, and reports
 
 Shopify Engineering's [How we raised mobile end-to-end test stability to 98%](https://shopify.engineering/mobile-e2e-testing) describes visual targeting, assertions checked before and after actions, and repeated runs to measure stability—the same principles behind SeenFlow's OCR selectors, transition checks, and stability mode. Shopify's reported 98% result applies to its own test suite.
 
+## Architecture
+
+Dependencies point toward domain rules and application-owned ports. Entry points construct concrete adapters; use cases receive them as arguments.
+
+| Component | Core | Adapters and composition |
+| --- | --- | --- |
+| Visual sidecar | `vision/seenflow/models.py`, `matching.py`, and `application/` | HTTP validation/routes in `http.py`; presentation in `serialization.py`; OCR, device capture and artifact/journal adapters; wiring in `server.py` |
+| Compiler | `flow.ts`, `actions.ts`, `schema.ts`, `ast.ts`, `execution.ts`, and `application.ts` | YAML input in `parser.ts`, Maestro/YAML output in `maestro.ts`, wiring in `compiler.ts` |
+| CLI | `packages/cli/src/application/` | Argument parsing, filesystem, subprocess, HTTP, signals and console adapters wired by the command entry points |
+| Maestro runtime | Uses the compiler's execution plan and the sidecar API | `packages/runtime/*.js` are scripts for Maestro's embedded JavaScript environment |
+
+The visual application returns ordinary dataclasses and raises application errors; the HTTP adapter maps these to JSON and status codes. OCR and screenshot capture contracts belong to the application, as do journal, image-decoding and artifact-writing ports. Pillow's image type is shared at that image-processing boundary; domain models and matching depend only on the standard library.
+
+The compiler validates a parsed flow and produces a typed execution plan before the output adapter emits Maestro commands. Its application accepts alternate parser/emitter functions. The CLI test use case receives filesystem, process, diagnostic, ID, signal and output operations through function ports.
+
+Keep new decisions in the core and new external integrations in adapters. Direct use-case tests exercise workflows without HTTP servers, OCR engines or devices. Import-direction checks run in the normal Python and TypeScript test suites and reject infrastructure imports from inner layers.
+
 ## Development
 
 ```bash

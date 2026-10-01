@@ -3,6 +3,8 @@ import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
 
+import type { SessionOptions } from "./application/ports.js";
+
 export interface SidecarHandle {
   url: string;
   token: string;
@@ -10,10 +12,7 @@ export interface SidecarHandle {
   stop(): Promise<void>;
 }
 
-export interface SidecarOptions {
-  debug?: boolean;
-  artifactsDir?: string;
-}
+export type SidecarOptions = SessionOptions;
 
 export async function startSidecar(options: SidecarOptions = {}): Promise<SidecarHandle> {
   const port = await availablePort();

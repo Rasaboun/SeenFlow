@@ -1,4 +1,4 @@
-import type { SourceLocation } from "./parser.js";
+import type { SourceLocation } from "./flow.js";
 
 export type MatchMode = "exact" | "contains" | "fuzzy";
 export type SpatialRelation = "near" | "above" | "below" | "leftOf" | "rightOf";

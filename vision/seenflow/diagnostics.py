@@ -5,15 +5,17 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from seenflow.models import OCRItem, OCRMatch
+from seenflow.application.contracts import Selection, SpatialEvidence
+from seenflow.serialization import item_json, selection_json, spatial_json
 
 
 def save_failure_artifacts(
     root: Path,
     image: Image.Image,
     items: list[OCRItem],
-    selector: dict[str, object],
+    selector: Selection | dict[str, object] | None,
     candidates: list[OCRMatch],
-    details: dict[str, object] | None = None,
+    details: SpatialEvidence | dict[str, object] | None = None,
 ) -> dict[str, str]:
     directory = root / datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
     return save_visual_artifacts(directory, image, items, selector, candidates, details)
@@ -23,9 +25,9 @@ def save_visual_artifacts(
     directory: Path,
     image: Image.Image,
     items: list[OCRItem],
-    selector: dict[str, object],
+    selector: Selection | dict[str, object] | None,
     candidates: list[OCRMatch],
-    details: dict[str, object] | None = None,
+    details: SpatialEvidence | dict[str, object] | None = None,
 ) -> dict[str, str]:
     directory.mkdir(parents=True, exist_ok=True)
     screenshot = directory / "screenshot.png"
@@ -53,34 +55,17 @@ def save_visual_artifacts(
         )
     marked.save(annotated, "PNG")
     payload = {
-        "selector": selector,
-        "detections": [_item_json(item) for item in items],
+        "selector": selection_json(selector),
+        "detections": [item_json(item) for item in items],
         "candidates": [
-            {**_item_json(match.item), "score": match.score} for match in candidates
+            {**item_json(match.item), "score": match.score} for match in candidates
         ],
     }
     if details is not None:
-        payload["spatial"] = details
+        payload["spatial"] = spatial_json(details)
     ocr.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
     return {
         "screenshot": str(screenshot),
         "annotated": str(annotated),
         "ocr": str(ocr),
     }
-
-
-def _item_json(item: OCRItem) -> dict[str, object]:
-    box = item.box
-    payload: dict[str, object] = {
-        "text": item.text,
-        "confidence": item.confidence,
-        "box": {"x": box.x, "y": box.y, "width": box.width, "height": box.height},
-        "source": item.source,
-    }
-    if item.line_id is not None:
-        payload["lineId"] = item.line_id
-    if item.span_start is not None and item.span_end is not None:
-        payload["span"] = {"start": item.span_start, "end": item.span_end}
-    if item.refinement_error is not None:
-        payload["refinementError"] = item.refinement_error
-    return payload
